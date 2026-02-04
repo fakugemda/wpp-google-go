@@ -16,19 +16,15 @@ func GetClient(config *oauth2.Config) *http.Client {
 	// 1. Intentamos cargar el token (Nube o Local)
 	tok, err := tokenFromEnvOrFile("GOOGLE_TOKEN", "resources/token.json")
 	if err != nil {
-		// Si no encontramos token por ningún lado, hay que loguearse.
-		// OJO: Esto solo funciona en TU PC. En la nube fallará si no configuraste la variable.
 		tok = getTokenFromWeb(config)
 		saveToken("resources/token.json", tok) // Guardamos copia local por si acaso
 	}
 	return config.Client(context.Background(), tok)
 }
 
-// tokenFromEnvOrFile: La lógica "anfibia" para el token
 func tokenFromEnvOrFile(envName, fileName string) (*oauth2.Token, error) {
 	tok := &oauth2.Token{}
 
-	// A. Intentar leer desde Variable de Entorno (Nube)
 	envContent := os.Getenv(envName)
 	if envContent != "" {
 		fmt.Println("☁️ Token cargado desde Variable de Entorno.")
@@ -36,7 +32,6 @@ func tokenFromEnvOrFile(envName, fileName string) (*oauth2.Token, error) {
 		return tok, err
 	}
 
-	// B. Intentar leer desde Archivo (Local)
 	f, err := os.Open(fileName)
 	if err != nil {
 		return nil, err

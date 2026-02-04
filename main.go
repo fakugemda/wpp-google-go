@@ -1,15 +1,7 @@
 package main
 
-import (
-	"whatsapp-gmail-bot/routes"
-	"whatsapp-gmail-bot/service"
-
-	"github.com/gofiber/fiber/v2"
-)
+import "whatsapp-gmail-bot/config"
 
 func main() {
-	service.InitGmail()
-	app := fiber.New()
-	routes.CreateFiberWhatsappRoutes(app)
-	app.Listen(":3000")
+	config.InitApp()
 }
