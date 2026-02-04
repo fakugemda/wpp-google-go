@@ -89,6 +89,9 @@ func (wppc *WhatsappController) handleMail(ctx *fiber.Ctx, msg, sender string) e
 	toEmail := strings.TrimSpace(parts[0])
 	bodyContent := strings.TrimSpace(parts[1])
 
+	// Remover comillas simples o dobles del inicio y final si están presentes
+	bodyContent = strings.Trim(bodyContent, `"'`)
+
 	draftID, err := service.CreateDraft(toEmail, constants.DEFAULT_SUBJECT, bodyContent)
 	if err != nil {
 		return wppc.reply(ctx, "❌ Error al crear el borrador: "+err.Error())

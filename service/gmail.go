@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 	"whatsapp-gmail-bot/auth" // Asegúrate de que este path sea correcto en tu go.mod
 
 	"golang.org/x/oauth2/google"
@@ -44,10 +45,22 @@ func InitGmail() {
 }
 
 func CreateDraft(to, subject, body string) (string, error) {
-	messageString := fmt.Sprintf("To: %s\r\n"+
-		"Subject: %s\r\n"+
-		"\r\n"+
-		"%s", to, subject, body)
+	var messageString string
+
+	// Detectar si el body contiene HTML
+	if containsHTML(body) {
+		messageString = fmt.Sprintf("To: %s\r\n"+
+			"Subject: %s\r\n"+
+			"Content-Type: text/html; charset=UTF-8\r\n"+
+			"\r\n"+
+			"%s", to, subject, body)
+	} else {
+		messageString = fmt.Sprintf("To: %s\r\n"+
+			"Subject: %s\r\n"+
+			"Content-Type: text/plain; charset=UTF-8\r\n"+
+			"\r\n"+
+			"%s", to, subject, body)
+	}
 
 	msg := []byte(messageString)
 
@@ -65,6 +78,18 @@ func CreateDraft(to, subject, body string) (string, error) {
 	}
 
 	return createdDraft.Id, nil
+}
+
+// containsHTML: Detecta si el texto contiene etiquetas HTML
+func containsHTML(text string) bool {
+	htmlTags := []string{"<img", "<html", "<body", "<div", "<p>", "<br", "<a ", "<span", "<h1", "<h2", "<h3", "<table", "<tr", "<td", "<th", "<ul", "<ol", "<li"}
+	textLower := strings.ToLower(text)
+	for _, tag := range htmlTags {
+		if strings.Contains(textLower, tag) {
+			return true
+		}
+	}
+	return false
 }
 
 // SendDraft: Envía el borrador por ID
