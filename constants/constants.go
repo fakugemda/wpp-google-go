@@ -10,3 +10,7 @@ const (
 	MAIL_PREFIX_LENGTH  = 7
 	DEFAULT_SUBJECT     = "Mail enviado desde WhatsApp"
 )
+
+const (
+	GEMINI_MODEL = "gemini-2.5-flash-lite"
+)
