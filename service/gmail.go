@@ -45,6 +45,12 @@ func InitGmail() {
 }
 
 func CreateDraft(to, subject, body string) (string, error) {
+	// Validar y limpiar el email
+	to = strings.TrimSpace(to)
+	if !isValidEmail(to) {
+		return "", fmt.Errorf("email inválido: %s", to)
+	}
+
 	var messageString string
 
 	// Detectar si el body contiene HTML
@@ -91,6 +97,26 @@ func containsHTML(text string) bool {
 	}
 	return false
 }
+
+// isValidEmail: Valida formato básico de email
+func isValidEmail(email string) bool {
+	if email == "" || email == "PENDIENTE" {
+		return false
+	}
+	// Validación básica: debe contener @ y al menos un punto después del @
+	parts := strings.Split(email, "@")
+	if len(parts) != 2 {
+		return false
+	}
+	if parts[0] == "" || parts[1] == "" {
+		return false
+	}
+	if !strings.Contains(parts[1], ".") {
+		return false
+	}
+	return true
+}
+
 
 // SendDraft: Envía el borrador por ID
 func SendDraft(draftId string) error {

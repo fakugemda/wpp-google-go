@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
 	"whatsapp-gmail-bot/constants"
 	"whatsapp-gmail-bot/models"
 
@@ -12,11 +11,11 @@ import (
 	"google.golang.org/api/option"
 )
 
-func ProcessIntent(userMessage string) (*models.AIResponse, error) {
+func ProcessIntent(userMessage, contactsList string) (*models.AIResponse, error) {
 	ctx := context.Background()
-	apiKey := os.Getenv("GEMINI_API_KEY")
+	//apiKey := os.Getenv("GEMINI_API_KEY")
 
-	client, err := genai.NewClient(ctx, option.WithAPIKey(apiKey))
+	client, err := genai.NewClient(ctx, option.WithAPIKey("AIzaSyAnd9bLW3Lge2s4lTXdjKjZETvfoUDokvQ"))
 	if err != nil {
 		return nil, fmt.Errorf("error creando cliente: %s", err.Error())
 	}
@@ -26,7 +25,7 @@ func ProcessIntent(userMessage string) (*models.AIResponse, error) {
 	model.ResponseMIMEType = "application/json"
 
 	// El Prompt del Sistema es la clave. Aquí le das la personalidad.
-	prompt := models.BuildPrompt(userMessage)
+	prompt := models.BuildPrompt(userMessage, contactsList)
 
 	resp, err := model.GenerateContent(ctx, genai.Text(prompt))
 	if err != nil {
@@ -37,12 +36,18 @@ func ProcessIntent(userMessage string) (*models.AIResponse, error) {
 		return nil, fmt.Errorf("respuesta vacía del modelo")
 	}
 
-	jsonRaw := fmt.Sprintf("%v", resp.Candidates[0].Content.Parts[0])
+	// Extraer el texto correctamente del Part
+	part := resp.Candidates[0].Content.Parts[0]
+	textPart, ok := part.(genai.Text)
+	if !ok {
+		return nil, fmt.Errorf("respuesta no es texto: %T", part)
+	}
+
+	jsonRaw := string(textPart)
 	var aiResponse models.AIResponse
 	if err := json.Unmarshal([]byte(jsonRaw), &aiResponse); err != nil {
 		return nil, fmt.Errorf("error parseando respuesta JSON: %s", err.Error())
 	}
 
 	return &aiResponse, nil
-
 }

@@ -15,12 +15,16 @@ type CommandHandler func(ctx *fiber.Ctx, msg, sender string) error
 type WhatsappController struct {
 	pendingDrafts map[string]string
 	commands      map[string]CommandHandler
+	contacts      map[string]string
+	contactsList  string
 }
 
-func NewWhatsappController() *WhatsappController {
+func NewWhatsappController(contacts map[string]string, contactsList string) *WhatsappController {
 	wppc := &WhatsappController{
 		pendingDrafts: make(map[string]string),
 		commands:      make(map[string]CommandHandler),
+		contacts:      contacts,
+		contactsList:  contactsList,
 	}
 	wppc.registerCommands()
 	return wppc
@@ -56,7 +60,7 @@ func (wppc *WhatsappController) handleCommand(ctx *fiber.Ctx, msg, sender string
 	// 2. PRIORIDAD INTELIGENTE: Todo lo demás va a Gemini
 	// Aquí llamamos a la función que creamos en el paso anterior (service/ai.go)
 	fmt.Println("🧠 Consultando a Gemini...")
-	aiDecision, err := service.ProcessIntent(msg)
+	aiDecision, err := service.ProcessIntent(msg, wppc.contactsList)
 
 	if err != nil {
 		fmt.Printf("Error IA: %v\n", err)
@@ -82,15 +86,31 @@ func (wppc *WhatsappController) handleCommand(ctx *fiber.Ctx, msg, sender string
 
 // Nueva función para manejar el borrador que generó la IA
 func (wppc *WhatsappController) handleAiDraft(ctx *fiber.Ctx, sender string, data *models.AIResponse) error {
+	// Log para debug
+	fmt.Printf("📧 IA generó: To=%s, Subject=%s, Content length=%d\n", data.To, data.Subject, len(data.Content))
 
 	// Validar si Gemini encontró el destinatario
 	if data.To == "PENDIENTE" || data.To == "" {
 		return wppc.reply(ctx, fmt.Sprintf("✍️ Entendido: '%s'\n\nPero... ¿A quién se lo mando? (Dime el email)", data.Subject))
 	}
 
+	// Limpiar el email antes de validar
+	data.To = strings.TrimSpace(data.To)
+
+	// Si no es un email válido, intentar buscar en contactos
+	if !isValidEmailFormat(data.To) {
+		if email, found := resolveContactEmail(data.To, wppc.contacts); found {
+			fmt.Printf("✅ Contacto resuelto: '%s' -> '%s'\n", data.To, email)
+			data.To = email
+		} else {
+			return wppc.reply(ctx, fmt.Sprintf("❌ No encontré el email para '%s'. ¿Puedes darme el email completo?", data.To))
+		}
+	}
+
 	// Crear el borrador con los datos enriquecidos por la IA
 	draftID, err := service.CreateDraft(data.To, data.Subject, data.Content)
 	if err != nil {
+		fmt.Printf("❌ Error creando draft: %v\n", err)
 		return wppc.reply(ctx, "❌ Error al crear borrador: "+err.Error())
 	}
 
@@ -126,4 +146,30 @@ func (wppc *WhatsappController) handleConfirm(ctx *fiber.Ctx, msg, sender string
 func (wppc *WhatsappController) reply(ctx *fiber.Ctx, message string) error {
 	ctx.Set("Content-Type", "text/xml")
 	return ctx.SendString(fmt.Sprintf(models.ReplyMessage, message))
+}
+
+// isValidEmailFormat: Valida si es un formato de email válido (no solo nombre)
+func isValidEmailFormat(text string) bool {
+	return strings.Contains(text, "@") && strings.Contains(text, ".")
+}
+
+// resolveContactEmail: Busca un nombre/apodo en la lista de contactos y devuelve su email
+func resolveContactEmail(name string, contactsMap map[string]string) (string, bool) {
+	nameLower := strings.ToLower(strings.TrimSpace(name))
+
+	// Buscar coincidencia exacta (case insensitive)
+	for contactName, email := range contactsMap {
+		if strings.ToLower(contactName) == nameLower {
+			return email, true
+		}
+	}
+
+	// Buscar coincidencia parcial
+	for contactName, email := range contactsMap {
+		if strings.Contains(strings.ToLower(contactName), nameLower) || strings.Contains(nameLower, strings.ToLower(contactName)) {
+			return email, true
+		}
+	}
+
+	return "", false
 }

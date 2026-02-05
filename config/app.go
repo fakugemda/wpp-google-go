@@ -12,8 +12,9 @@ import (
 // InitApp: Inicializa toda la aplicación (Gmail, Fiber, Rutas y Servidor)
 func InitApp() {
 	service.InitGmail()
+	LoadContacts()
 	app := fiber.New()
-	routes.RegisterWhatsappRoutes(app)
+	routes.RegisterWhatsappRoutes(app, Contacts, GetContactsPrompt())
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "3000"
