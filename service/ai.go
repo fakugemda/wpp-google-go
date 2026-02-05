@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"whatsapp-gmail-bot/constants"
 	"whatsapp-gmail-bot/models"
 
@@ -13,9 +14,9 @@ import (
 
 func ProcessIntent(userMessage, contactsList string) (*models.AIResponse, error) {
 	ctx := context.Background()
-	//apiKey := os.Getenv("GEMINI_API_KEY")
+	apiKey := os.Getenv("GEMINI_API_KEY")
 
-	client, err := genai.NewClient(ctx, option.WithAPIKey("AIzaSyAnd9bLW3Lge2s4lTXdjKjZETvfoUDokvQ"))
+	client, err := genai.NewClient(ctx, option.WithAPIKey(apiKey))
 	if err != nil {
 		return nil, fmt.Errorf("error creando cliente: %s", err.Error())
 	}
