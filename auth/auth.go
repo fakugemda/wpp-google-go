@@ -11,23 +11,24 @@ import (
 	"golang.org/x/oauth2"
 )
 
-// GetClient: Obtiene un cliente HTTP autenticado
+// GetClient - Obtiene un cliente HTTP autenticado
 func GetClient(config *oauth2.Config) *http.Client {
-	// 1. Intentamos cargar el token (Nube o Local)
 	tok, err := tokenFromEnvOrFile("GOOGLE_TOKEN", "resources/token.json")
 	if err != nil {
 		tok = getTokenFromWeb(config)
-		saveToken("resources/token.json", tok) // Guardamos copia local por si acaso
+		if err := saveToken("resources/token.json", tok); err != nil {
+			fmt.Printf("No se pudo guardar token localmente: %s\n", err.Error())
+		}
 	}
 	return config.Client(context.Background(), tok)
 }
 
+// tokenFromEnvOrFile - Intenta leer el token desde variable de entorno o archivo local
 func tokenFromEnvOrFile(envName, fileName string) (*oauth2.Token, error) {
-	tok := &oauth2.Token{}
-
 	envContent := os.Getenv(envName)
 	if envContent != "" {
-		fmt.Println("☁️ Token cargado desde Variable de Entorno.")
+		fmt.Println("Token cargado desde Variable de Entorno.")
+		tok := &oauth2.Token{}
 		err := json.Unmarshal([]byte(envContent), tok)
 		return tok, err
 	}
@@ -37,12 +38,13 @@ func tokenFromEnvOrFile(envName, fileName string) (*oauth2.Token, error) {
 		return nil, err
 	}
 	defer f.Close()
-	fmt.Println("🏠 Token cargado desde archivo local.")
+	fmt.Println("Token cargado desde archivo local.")
+	tok := &oauth2.Token{}
 	err = json.NewDecoder(f).Decode(tok)
 	return tok, err
 }
 
-// getTokenFromWeb: Obtiene un token desde la web (solo funciona en local)
+// getTokenFromWeb - Obtiene un token desde la web (solo funciona en local)
 func getTokenFromWeb(config *oauth2.Config) *oauth2.Token {
 	authURL := config.AuthCodeURL("state-token", oauth2.AccessTypeOffline)
 	fmt.Printf("Go to the following link in your browser:\n%v\n", authURL)
@@ -53,7 +55,7 @@ func getTokenFromWeb(config *oauth2.Config) *oauth2.Token {
 		log.Fatalf("Unable to read authorization code: %s", err.Error())
 	}
 
-	tok, err := config.Exchange(context.TODO(), authCode)
+	tok, err := config.Exchange(context.Background(), authCode)
 	if err != nil {
 		log.Fatalf("Unable to exchange authorization code: %s", err.Error())
 	}
@@ -61,13 +63,16 @@ func getTokenFromWeb(config *oauth2.Config) *oauth2.Token {
 	return tok
 }
 
-// saveToken: Guarda el token en un archivo local
-func saveToken(path string, token *oauth2.Token) {
+// saveToken - Guarda el token en un archivo local
+func saveToken(path string, token *oauth2.Token) error {
 	fmt.Printf("Saving token in %s\n", path)
 	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0600)
 	if err != nil {
-		log.Fatalf("Error saving token: %s", err.Error())
+		return fmt.Errorf("error abriendo archivo: %s", err.Error())
 	}
 	defer f.Close()
-	json.NewEncoder(f).Encode(token)
+	if err := json.NewEncoder(f).Encode(token); err != nil {
+		return fmt.Errorf("error codificando token: %s", err.Error())
+	}
+	return nil
 }
