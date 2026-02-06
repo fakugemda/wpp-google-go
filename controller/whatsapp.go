@@ -35,6 +35,12 @@ func (wppc *WhatsappController) registerCommands() {
 	wppc.commands[constants.COMMAND_CONFIRM] = wppc.handleConfirm
 }
 
+func (wppc *WhatsappController) StatusController(ctx *fiber.Ctx) error {
+	return ctx.Status(fiber.StatusOK).JSON(fiber.Map{
+		"status": "running",
+	})
+}
+
 func (wppc *WhatsappController) SendWhatsappController(ctx *fiber.Ctx) error {
 	msg := ctx.FormValue("Body")
 	sender := ctx.FormValue("From")
