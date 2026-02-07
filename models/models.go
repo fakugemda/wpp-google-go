@@ -4,6 +4,8 @@ import (
 	"fmt"
 )
 
+var ReplyMessage = `<?xml version="1.0" encoding="UTF-8"?><Response><Message>%s</Message></Response>`
+
 // Definimos la estructura que queremos que Gemini nos devuelva siempre
 type AIResponse struct {
 	Type    string `json:"type"`    // "EMAIL_DRAFT" o "CHAT"

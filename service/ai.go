@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
 	"whatsapp-gmail-bot/constants"
 	"whatsapp-gmail-bot/models"
 
@@ -15,7 +14,7 @@ import (
 // ProcessIntent - Procesa el mensaje del usuario usando Gemini AI y devuelve la respuesta estructurada
 func ProcessIntent(userMessage, contactsList string) (*models.AIResponse, error) {
 	ctx := context.Background()
-	apiKey := os.Getenv("GEMINI_API_KEY")
+	apiKey := "AIzaSyAnd9bLW3Lge2s4lTXdjKjZETvfoUDokvQ" //os.Getenv("GEMINI_API_KEY")
 	if apiKey == "" {
 		return nil, fmt.Errorf("GEMINI_API_KEY no está configurada")
 	}

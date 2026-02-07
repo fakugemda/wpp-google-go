@@ -10,5 +10,8 @@ func RegisterWhatsappRoutes(app *fiber.App, contacts map[string]string, contacts
 	// Inicializar controller con contactos inyectados
 	wppController := controller.NewWhatsappController(contacts, contactsList)
 	app.Get("/status", wppController.StatusController)
-	app.Post("/whatsapp", wppController.SendWhatsappController)
+
+	// Meta Routes
+	app.Get("/webhook", wppController.VerifyWebhook)
+	app.Post("/webhook", wppController.ProcessWebhook)
 }

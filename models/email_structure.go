@@ -1,3 +1,0 @@
-package models
-
-var ReplyMessage = `<?xml version="1.0" encoding="UTF-8"?><Response><Message>%s</Message></Response>`
