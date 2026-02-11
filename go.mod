@@ -3,6 +3,7 @@ module whatsapp-gmail-bot
 go 1.25
 
 require (
+	github.com/bwmarrin/discordgo v0.29.0
 	github.com/gofiber/fiber/v2 v2.52.11
 	github.com/google/generative-ai-go v0.20.1
 	golang.org/x/oauth2 v0.34.0
@@ -27,6 +28,7 @@ require (
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/googleapis/enterprise-certificate-proxy v0.3.11 // indirect
 	github.com/googleapis/gax-go/v2 v2.16.0 // indirect
+	github.com/gorilla/websocket v1.4.2 // indirect
 	github.com/klauspost/compress v1.18.3 // indirect
 	github.com/mattn/go-colorable v0.1.14 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect

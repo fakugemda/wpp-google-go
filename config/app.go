@@ -13,6 +13,7 @@ import (
 func InitApp() {
 	service.InitGmail()
 	LoadContacts()
+	go service.StartDiscordService(GetContactsPrompt())
 	app := fiber.New()
 	routes.RegisterWhatsappRoutes(app, Contacts, GetContactsPrompt())
 	port := os.Getenv("PORT")
