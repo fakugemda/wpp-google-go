@@ -21,16 +21,19 @@ MailBot AI es un asistente inteligente que te permite **redactar y enviar emails
 ## ✨ Funcionalidades
 
 ### 🤖 Procesamiento Inteligente
+
 - **IA con Gemini**: Procesa mensajes en lenguaje natural y genera respuestas contextuales
 - **Reconocimiento de Intenciones**: Detecta automáticamente si quieres enviar un email, chatear o confirmar acciones
 - **Gestión de Contactos**: Resuelve nombres a emails automáticamente desde tu agenda
 
 ### 📱 Multi-Platforma
+
 - **WhatsApp**: Recibe y responde mensajes vía Meta Cloud API
 - **Discord**: Soporte completo para mensajes directos (DMs)
 - **Webhook**: Endpoints REST para integraciones externas
 
 ### 📧 Gestión de Emails
+
 - **Creación de Borradores**: Genera emails profesionales con asunto y contenido
 - **Envío Directo**: Confirma y envía correos con un simple comando
 - **Validación Automática**: Verifica formatos de email y detecta contenido HTML
@@ -69,17 +72,20 @@ wpp-google-go/
 ### Configuración
 
 1. **Clona el repositorio**
+
 ```bash
 git clone <repo-url>
 cd wpp-google-go
 ```
 
 2. **Instala dependencias**
+
 ```bash
 go mod download
 ```
 
 3. **Configura variables de entorno**
+
 ```bash
 # Gmail
 export GOOGLE_CREDENTIALS="..." # JSON de credenciales OAuth2
@@ -101,6 +107,7 @@ export CONTACTS_JSON='{"Nombre": "email@example.com"}' # JSON de contactos
 ```
 
 4. **Ejecuta la aplicación**
+
 ```bash
 go run main.go
 ```
@@ -110,17 +117,20 @@ go run main.go
 ### Desde WhatsApp
 
 #### Envío de Emails con Texto
+
 1. Envía un mensaje al bot: *"Redacta un email a Juan sobre la reunión de mañana"*
 2. El bot genera un borrador y te lo muestra
 3. Responde **"sí"** o **"envíalo"** para confirmar el envío
 
 #### Envío de Emails con Imágenes 📷
+
 1. **Opción A - Imagen con Caption:**
+
    - Envía una imagen a WhatsApp con un texto (caption): *"Mándasela a mamá y dile que ya terminé"*
    - El bot descarga la imagen, procesa el texto y genera el borrador con la imagen adjunta
    - Confirma con **"sí"** para enviar
-
 2. **Opción B - Imagen sin Caption:**
+
    - Envía solo la imagen (sin texto)
    - El bot te pregunta qué hacer con ella
    - Responde con instrucciones: *"Mándasela a mi jefe"*
@@ -141,6 +151,7 @@ go run main.go
 ### Ejemplos de Uso
 
 #### Ejemplo 1: Email Simple
+
 ```
 Tú: "Redacta un email a juan@example.com sobre la reunión de mañana"
 Bot: *Borrador IA Creado*
@@ -153,6 +164,7 @@ Bot: 🚀 Correo enviado exitosamente!
 ```
 
 #### Ejemplo 2: Email con Imagen y Caption
+
 ```
 Tú: [Envías una foto con caption: "Mándasela a mamá y dile que ya terminé"]
 Bot: *Borrador IA Creado*
@@ -166,6 +178,7 @@ Bot: 🚀 Correo enviado exitosamente!
 ```
 
 #### Ejemplo 3: Imagen sin Caption
+
 ```
 Tú: [Envías solo una foto]
 Bot: 📷 Foto recibida. ¿Qué quieres que haga con ella? (Ej: 'Mándasela a mamá')
@@ -190,6 +203,7 @@ Bot: *Borrador IA Creado*
 ## 📝 Estructura de Datos
 
 ### AIResponse
+
 ```go
 type AIResponse struct {
     Type    string // "CHAT" | "EMAIL_DRAFT" | "CONFIRM_SEND"
@@ -210,6 +224,7 @@ type AIResponse struct {
 ## 🔐 Características Técnicas
 
 ### Gestión de Imágenes
+
 - **Descarga Automática**: Las imágenes se descargan automáticamente al recibirlas
 - **Caché Temporal**: Las imágenes se almacenan en memoria con timestamp
 - **Limpieza Automática**: Sistema de limpieza que elimina imágenes expiradas cada 2 minutos
@@ -217,6 +232,7 @@ type AIResponse struct {
 - **Detección de Tipo**: Identificación automática del tipo MIME y extensión de archivo
 
 ### Codificación UTF-8
+
 - **Asuntos Blindados**: Codificación RFC 2047 para asuntos con caracteres especiales
 - **Cuerpo Base64**: Codificación Base64 del cuerpo cuando hay adjuntos
 - **Soporte Completo**: Tildes, eñes, emojis y caracteres especiales funcionan correctamente
@@ -231,7 +247,8 @@ Este proyecto es privado y confidencial.
 
 **Desarrollado con ❤️ usando Go y Gemini AI**
 
+By: Faku y Markos 🤡
+
 [Reportar Bug](https://github.com/fakugemda/wpp-google-go/issues) · [Solicitar Feature](https://github.com/fakugemda/wpp-google-go/issues)
 
 </div>
-
