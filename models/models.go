@@ -15,11 +15,22 @@ type MetaWebhook struct {
 			Value struct {
 				Messages []struct {
 					From string `json:"from"`
+					Type string `json:"type"` // "text" o "image"
 					Text struct {
 						Body string `json:"body"`
-					} `json:"text"`
+					} `json:"text,omitempty"`
+					Image struct {
+						ID      string `json:"id"`
+						Caption string `json:"caption,omitempty"`
+					} `json:"image,omitempty"`
 				} `json:"messages"`
 			} `json:"value"`
 		} `json:"changes"`
 	} `json:"entry"`
+}
+
+// Estructura para leer la respuesta de la URL de Meta
+type MediaURLResponse struct {
+	URL      string `json:"url"`
+	MimeType string `json:"mime_type"`
 }

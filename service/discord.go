@@ -91,7 +91,7 @@ func discordMessageHandler(s *discordgo.Session, m *discordgo.MessageCreate) {
 
 // SendEmail crea un borrador y lo envía inmediatamente
 func SendEmail(to, subject, body string) error {
-	draftID, err := CreateDraft(to, subject, body)
+	draftID, err := CreateDraft(to, subject, body, nil, "")
 	if err != nil {
 		return fmt.Errorf("error creando borrador: %s", err.Error())
 	}

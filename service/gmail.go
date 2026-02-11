@@ -5,6 +5,8 @@ import (
 	"encoding/base64"
 	"fmt"
 	"log"
+	"mime"
+	"path/filepath"
 	"strings"
 	"whatsapp-gmail-bot/auth"
 	"whatsapp-gmail-bot/utils"
@@ -44,19 +46,66 @@ func InitGmail() {
 }
 
 // CreateDraft - Crea un borrador de email en Gmail
-func CreateDraft(to, subject, body string) (string, error) {
+func CreateDraft(to, subject, body string, attachmentData []byte, filename string) (string, error) {
 	to = strings.TrimSpace(to)
 	if !utilsGmail.IsValidEmail(to) {
 		return "", fmt.Errorf("email inválido: %s", to)
 	}
 
-	contentType := "text/plain; charset=UTF-8"
-	if utilsGmail.ContainsHTML(body) {
-		contentType = "text/html; charset=UTF-8"
-	}
+	var msg []byte
 
-	messageString := utilsGmail.BuildEmailMessage(to, subject, body, contentType)
-	msg := []byte(messageString)
+	// Si NO hay adjunto, mandamos el mail simple de siempre
+	if len(attachmentData) == 0 {
+		contentType := "text/plain; charset=UTF-8"
+		if utilsGmail.ContainsHTML(body) {
+			contentType = "text/html; charset=UTF-8"
+		}
+
+		messageString := utilsGmail.BuildEmailMessage(to, subject, body, contentType)
+		msg = []byte(messageString)
+	} else {
+		// Si HAY adjunto, construimos el MIME Multipart
+		boundary := "----=_Part_0_" + fmt.Sprintf("%d", len(attachmentData))
+
+		// Detectar tipo de archivo (jpeg, png, etc)
+		mimeType := mime.TypeByExtension(filepath.Ext(filename))
+		if mimeType == "" {
+			mimeType = "application/octet-stream"
+		}
+
+		// Codificar archivo a Base64
+		fileBase64 := base64.StdEncoding.EncodeToString(attachmentData)
+
+		// Determinar content type del cuerpo
+		bodyContentType := "text/plain; charset=UTF-8"
+		if utilsGmail.ContainsHTML(body) {
+			bodyContentType = "text/html; charset=UTF-8"
+		}
+
+		// Construcción manual del Email Multipart
+		msgParts := []string{
+			fmt.Sprintf("To: %s", to),
+			fmt.Sprintf("Subject: %s", subject),
+			"MIME-Version: 1.0",
+			fmt.Sprintf("Content-Type: multipart/mixed; boundary=\"%s\"", boundary),
+			"",
+			fmt.Sprintf("--%s", boundary),
+			fmt.Sprintf("Content-Type: %s", bodyContentType),
+			"",
+			body,
+			"",
+			fmt.Sprintf("--%s", boundary),
+			fmt.Sprintf("Content-Type: %s; name=\"%s\"", mimeType, filename),
+			"Content-Transfer-Encoding: base64",
+			fmt.Sprintf("Content-Disposition: attachment; filename=\"%s\"", filename),
+			"",
+			fileBase64,
+			fmt.Sprintf("--%s--", boundary),
+		}
+
+		fullMsg := strings.Join(msgParts, "\r\n")
+		msg = []byte(fullMsg)
+	}
 
 	draftEmail := &gmail.Draft{
 		Message: &gmail.Message{
