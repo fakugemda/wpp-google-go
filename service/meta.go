@@ -6,18 +6,18 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"strings"
 	"time"
+	"whatsapp-gmail-bot/utils"
 )
+
+var utilsMeta = utils.GetUtils()
 
 // SendWhatsAppMessage - Envía texto a un usuario usando la Cloud API de Meta
 func SendWhatsAppMessage(to string, message string) error {
 	token := os.Getenv("META_TOKEN")
 	phoneID := os.Getenv("META_PHONE_ID")
 
-	if len(to) > 3 && strings.HasPrefix(to, "549") {
-		to = "54" + to[3:]
-	}
+	to = utilsMeta.NormalizeArgPhoneNumber(to)
 
 	if token == "" {
 		return fmt.Errorf("META_TOKEN no está configurada")
@@ -28,7 +28,6 @@ func SendWhatsAppMessage(to string, message string) error {
 
 	url := fmt.Sprintf("https://graph.facebook.com/v22.0/%s/messages", phoneID)
 
-	// Payload JSON
 	payload := map[string]interface{}{
 		"messaging_product": "whatsapp",
 		"to":                to,
@@ -40,22 +39,18 @@ func SendWhatsAppMessage(to string, message string) error {
 
 	jsonBody, _ := json.Marshal(payload)
 
-	// Crear Petición
 	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonBody))
 	if err != nil {
 		return fmt.Errorf("error creando request: %v", err)
 	}
 
-	// Headers
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Content-Type", "application/json")
 
-	// Cliente HTTP con Timeout (Para que no se cuelgue)
 	client := &http.Client{
 		Timeout: 10 * time.Second,
 	}
 
-	// Enviar
 	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("error enviando a meta: %v", err)

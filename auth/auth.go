@@ -7,41 +7,22 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"whatsapp-gmail-bot/utils"
 
 	"golang.org/x/oauth2"
 )
 
 // GetClient - Obtiene un cliente HTTP autenticado
 func GetClient(config *oauth2.Config) *http.Client {
-	tok, err := tokenFromEnvOrFile("GOOGLE_TOKEN", "resources/token.json")
+	tok, err := utils.LoadJSONFromEnvOrFile[oauth2.Token]("GOOGLE_TOKEN", "resources/token.json")
 	if err != nil {
-		tok = getTokenFromWeb(config)
-		if err := saveToken("resources/token.json", tok); err != nil {
+		tokPtr := getTokenFromWeb(config)
+		tok = *tokPtr
+		if err := saveToken("resources/token.json", tokPtr); err != nil {
 			fmt.Printf("No se pudo guardar token localmente: %s\n", err.Error())
 		}
 	}
-	return config.Client(context.Background(), tok)
-}
-
-// tokenFromEnvOrFile - Intenta leer el token desde variable de entorno o archivo local
-func tokenFromEnvOrFile(envName, fileName string) (*oauth2.Token, error) {
-	envContent := os.Getenv(envName)
-	if envContent != "" {
-		fmt.Println("Token cargado desde Variable de Entorno.")
-		tok := &oauth2.Token{}
-		err := json.Unmarshal([]byte(envContent), tok)
-		return tok, err
-	}
-
-	f, err := os.Open(fileName)
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-	fmt.Println("Token cargado desde archivo local.")
-	tok := &oauth2.Token{}
-	err = json.NewDecoder(f).Decode(tok)
-	return tok, err
+	return config.Client(context.Background(), &tok)
 }
 
 // getTokenFromWeb - Obtiene un token desde la web (solo funciona en local)

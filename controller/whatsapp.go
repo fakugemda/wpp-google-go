@@ -7,33 +7,21 @@ import (
 	"whatsapp-gmail-bot/constants"
 	"whatsapp-gmail-bot/models"
 	"whatsapp-gmail-bot/service"
+	"whatsapp-gmail-bot/utils"
 
 	"github.com/gofiber/fiber/v2"
 )
 
-// Estructuras para leer el JSON de Meta/Facebook
-type MetaWebhook struct {
-	Entry []struct {
-		Changes []struct {
-			Value struct {
-				Messages []struct {
-					From string `json:"from"`
-					Text struct {
-						Body string `json:"body"`
-					} `json:"text"`
-				} `json:"messages"`
-			} `json:"value"`
-		} `json:"changes"`
-	} `json:"entry"`
-}
+type CommandHandler func(sender, msg string)
 
-type CommandHandler func(sender, msg string) // Quitamos ctx, ya no lo necesitamos para responder
+var utilsController = utils.GetUtils()
 
 type WhatsappController struct {
 	pendingDrafts map[string]string
 	commands      map[string]CommandHandler
 	contacts      map[string]string
 	contactsList  string
+	metaWebhook   models.MetaWebhook
 }
 
 func NewWhatsappController(contacts map[string]string, contactsList string) *WhatsappController {
@@ -52,6 +40,11 @@ func (wppc *WhatsappController) registerCommands() {
 	wppc.commands[constants.COMMAND_CONFIRM] = wppc.handleConfirm
 }
 
+func (wppc *WhatsappController) StatusController(ctx *fiber.Ctx) error {
+	fmt.Println("🟢 Funcionando correctamente... 🟢")
+	return ctx.Status(fiber.StatusOK).JSON(fiber.Map{"status": "running"})
+}
+
 func (wppc *WhatsappController) VerifyWebhook(ctx *fiber.Ctx) error {
 	verifyToken := os.Getenv("META_VERIFY_TOKEN")
 	mode := ctx.Query("hub.mode")
@@ -65,7 +58,7 @@ func (wppc *WhatsappController) VerifyWebhook(ctx *fiber.Ctx) error {
 }
 
 func (wppc *WhatsappController) ProcessWebhook(ctx *fiber.Ctx) error {
-	var payload MetaWebhook
+	var payload models.MetaWebhook
 	if err := ctx.BodyParser(&payload); err != nil {
 		return ctx.SendStatus(400)
 	}
@@ -89,15 +82,13 @@ func (wppc *WhatsappController) ProcessWebhook(ctx *fiber.Ctx) error {
 func (wppc *WhatsappController) handleCommand(sender, msg string) {
 	msgLower := strings.ToLower(strings.TrimSpace(msg))
 
-	// 1. Verificar comandos directos
 	if handler, exists := wppc.commands[msgLower]; exists {
 		handler(sender, msg)
 		return
 	}
 
-	// 2. Consultar a Gemini
 	fmt.Println("🧠 Consultando a Gemini...")
-	aiDecision, err := service.ProcessIntent(msg, wppc.contactsList) // Asegúrate que ProcessIntent acepte estos params
+	aiDecision, err := service.ProcessIntent(msg, wppc.contactsList)
 
 	if err != nil {
 		fmt.Printf("Error IA: %s\n", err.Error())
@@ -108,19 +99,16 @@ func (wppc *WhatsappController) handleCommand(sender, msg string) {
 	switch aiDecision.Type {
 	case "CHAT":
 		wppc.reply(sender, aiDecision.Content)
-
 	case "CONFIRM_SEND":
 		wppc.handleConfirm(sender, msg)
-
 	case "EMAIL_DRAFT":
 		wppc.handleAiDraft(sender, aiDecision)
-
 	default:
 		wppc.reply(sender, "🤖 No entendí la respuesta de la IA.")
 	}
 }
 
-// handleAiDraft - Adaptado para no usar ctx
+// handleAiDraft
 func (wppc *WhatsappController) handleAiDraft(sender string, data *models.AIResponse) {
 	fmt.Printf("IA generó: To=%s, Subject=%s\n", data.To, data.Subject)
 
@@ -161,27 +149,20 @@ func (wppc *WhatsappController) handleConfirm(sender, msg string) {
 	wppc.reply(sender, "🚀 Correo enviado exitosamente!")
 }
 
-// ---------------------------------------------------------
-// FUNCION REPLY NUEVA (La clave del cambio)
-// ---------------------------------------------------------
 func (wppc *WhatsappController) reply(to, message string) {
-	// Ya no escribimos en ctx.
-	// Llamamos al servicio que dispara el mensaje a la API de Meta.
 	err := service.SendWhatsAppMessage(to, message)
 	if err != nil {
 		fmt.Printf("❌ Error enviando WhatsApp a %s: %v\n", to, err)
 	}
 }
 
-// --- Helpers (Sin cambios de lógica, solo firmas si es necesario) ---
-
 func (wppc *WhatsappController) validateAndResolveRecipient(data *models.AIResponse) bool {
 	if data.To == "PENDIENTE" || data.To == "" {
 		return false
 	}
 	data.To = strings.TrimSpace(data.To)
-	if !wppc.isValidEmailFormat(data.To) {
-		if email, found := wppc.resolveContactEmail(data.To); found {
+	if !utilsController.IsValidEmail(data.To) {
+		if email, found := utilsController.ResolveContactByName(wppc.contacts, data.To); found {
 			data.To = email
 		} else {
 			return false
@@ -197,27 +178,4 @@ func (wppc *WhatsappController) createDraft(data *models.AIResponse) (string, er
 func (wppc *WhatsappController) buildPreviewMessage(data *models.AIResponse) string {
 	return fmt.Sprintf("*Borrador IA Creado*\n\n*Para:* %s\n*Asunto:* %s\n\n%s\n\n_¿Lo envío? (Responde Sí)_",
 		data.To, data.Subject, data.Content)
-}
-
-func (wppc *WhatsappController) isValidEmailFormat(text string) bool {
-	return strings.Contains(text, "@") && strings.Contains(text, ".")
-}
-
-func (wppc *WhatsappController) resolveContactEmail(name string) (string, bool) {
-	nameLower := strings.ToLower(strings.TrimSpace(name))
-	for contactName, email := range wppc.contacts {
-		if strings.ToLower(contactName) == nameLower {
-			return email, true
-		}
-	}
-	for contactName, email := range wppc.contacts {
-		if strings.Contains(strings.ToLower(contactName), nameLower) || strings.Contains(nameLower, strings.ToLower(contactName)) {
-			return email, true
-		}
-	}
-	return "", false
-}
-
-func (wppc *WhatsappController) StatusController(ctx *fiber.Ctx) error {
-	return ctx.Status(fiber.StatusOK).JSON(fiber.Map{"status": "running"})
 }
