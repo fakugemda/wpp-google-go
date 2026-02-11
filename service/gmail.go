@@ -16,6 +16,16 @@ import (
 	"google.golang.org/api/option"
 )
 
+// encodeSubject codifica el asunto en formato RFC 2047 para soportar UTF-8
+
+func encodeSubject(subject string) string {
+	if subject == "" {
+		return ""
+	}
+	encoded := base64.StdEncoding.EncodeToString([]byte(subject))
+	return fmt.Sprintf("=?utf-8?B?%s?=", encoded)
+}
+
 var GmailService *gmail.Service
 
 var utilsGmail = utils.GetUtils()
@@ -46,11 +56,15 @@ func InitGmail() {
 }
 
 // CreateDraft - Crea un borrador de email en Gmail
+// Blindado contra problemas UTF-8 (tildes, eñes, emojis)
 func CreateDraft(to, subject, body string, attachmentData []byte, filename string) (string, error) {
 	to = strings.TrimSpace(to)
 	if !utilsGmail.IsValidEmail(to) {
 		return "", fmt.Errorf("email inválido: %s", to)
 	}
+
+	// Codificar el asunto para soportar UTF-8 (tildes, eñes, emojis)
+	encodedSubject := encodeSubject(subject)
 
 	var msg []byte
 
@@ -61,7 +75,12 @@ func CreateDraft(to, subject, body string, attachmentData []byte, filename strin
 			contentType = "text/html; charset=UTF-8"
 		}
 
-		messageString := utilsGmail.BuildEmailMessage(to, subject, body, contentType)
+		// Construir mensaje con asunto codificado
+		messageString := fmt.Sprintf("To: %s\r\n"+
+			"Subject: %s\r\n"+
+			"Content-Type: %s\r\n"+
+			"\r\n"+
+			"%s", to, encodedSubject, contentType, body)
 		msg = []byte(messageString)
 	} else {
 		// Si HAY adjunto, construimos el MIME Multipart
@@ -82,17 +101,21 @@ func CreateDraft(to, subject, body string, attachmentData []byte, filename strin
 			bodyContentType = "text/html; charset=UTF-8"
 		}
 
-		// Construcción manual del Email Multipart
+		// Codificar el cuerpo en Base64 para blindaje UTF-8
+		bodyBase64 := base64.StdEncoding.EncodeToString([]byte(body))
+
+		// Construcción manual del Email Multipart con blindaje UTF-8
 		msgParts := []string{
 			fmt.Sprintf("To: %s", to),
-			fmt.Sprintf("Subject: %s", subject),
+			fmt.Sprintf("Subject: %s", encodedSubject), // Asunto blindado
 			"MIME-Version: 1.0",
 			fmt.Sprintf("Content-Type: multipart/mixed; boundary=\"%s\"", boundary),
 			"",
 			fmt.Sprintf("--%s", boundary),
 			fmt.Sprintf("Content-Type: %s", bodyContentType),
+			"Content-Transfer-Encoding: base64", // Codificación Base64 para el cuerpo
 			"",
-			body,
+			bodyBase64, // Cuerpo codificado en Base64
 			"",
 			fmt.Sprintf("--%s", boundary),
 			fmt.Sprintf("Content-Type: %s; name=\"%s\"", mimeType, filename),
