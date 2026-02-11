@@ -34,6 +34,8 @@ MailBot AI es un asistente inteligente que te permite **redactar y enviar emails
 - **Creación de Borradores**: Genera emails profesionales con asunto y contenido
 - **Envío Directo**: Confirma y envía correos con un simple comando
 - **Validación Automática**: Verifica formatos de email y detecta contenido HTML
+- **Adjuntos de Imágenes**: Envía imágenes recibidas por WhatsApp como adjuntos en los emails
+- **Soporte UTF-8 Completo**: Asuntos y contenido con tildes, eñes y emojis se muestran correctamente
 
 ## 🏗️ Arquitectura
 
@@ -48,8 +50,9 @@ wpp-google-go/
 ├── 📁 service/       # Lógica de negocio
 │   ├── ai.go         # Integración con Gemini AI
 │   ├── discord.go    # Servicio de Discord
-│   ├── gmail.go      # Gestión de Gmail
-│   └── meta.go       # API de WhatsApp
+│   ├── gmail.go      # Gestión de Gmail (con soporte UTF-8 y adjuntos)
+│   ├── meta.go       # API de WhatsApp
+│   └── meta_media.go # Descarga de imágenes desde Meta/WhatsApp
 └── 📁 utils/         # Utilidades genéricas (Singleton)
 ```
 
@@ -106,9 +109,23 @@ go run main.go
 
 ### Desde WhatsApp
 
+#### Envío de Emails con Texto
 1. Envía un mensaje al bot: *"Redacta un email a Juan sobre la reunión de mañana"*
 2. El bot genera un borrador y te lo muestra
 3. Responde **"sí"** o **"envíalo"** para confirmar el envío
+
+#### Envío de Emails con Imágenes 📷
+1. **Opción A - Imagen con Caption:**
+   - Envía una imagen a WhatsApp con un texto (caption): *"Mándasela a mamá y dile que ya terminé"*
+   - El bot descarga la imagen, procesa el texto y genera el borrador con la imagen adjunta
+   - Confirma con **"sí"** para enviar
+
+2. **Opción B - Imagen sin Caption:**
+   - Envía solo la imagen (sin texto)
+   - El bot te pregunta qué hacer con ella
+   - Responde con instrucciones: *"Mándasela a mi jefe"*
+   - El bot genera el borrador con la imagen adjunta
+   - Confirma con **"sí"** para enviar
 
 ### Desde Discord
 
@@ -118,8 +135,48 @@ go run main.go
 
 ### Comandos Especiales
 
-- `cancelar` - Cancela operaciones pendientes
+- `cancelar` - Cancela operaciones pendientes y limpia el caché de imágenes
 - `confirmar` / `sí` - Confirma el envío de un borrador
+
+### Ejemplos de Uso
+
+#### Ejemplo 1: Email Simple
+```
+Tú: "Redacta un email a juan@example.com sobre la reunión de mañana"
+Bot: *Borrador IA Creado*
+     *Para:* juan@example.com
+     *Asunto:* Reunión de mañana
+     [Contenido del email...]
+     _¿Lo envío? (Responde Sí)_
+Tú: "sí"
+Bot: 🚀 Correo enviado exitosamente!
+```
+
+#### Ejemplo 2: Email con Imagen y Caption
+```
+Tú: [Envías una foto con caption: "Mándasela a mamá y dile que ya terminé"]
+Bot: *Borrador IA Creado*
+     *Para:* mamá@example.com
+     *Asunto:* Actualización
+     [Contenido del email...]
+     📎 [Imagen adjunta]
+     _¿Lo envío? (Responde Sí)_
+Tú: "sí"
+Bot: 🚀 Correo enviado exitosamente!
+```
+
+#### Ejemplo 3: Imagen sin Caption
+```
+Tú: [Envías solo una foto]
+Bot: 📷 Foto recibida. ¿Qué quieres que haga con ella? (Ej: 'Mándasela a mamá')
+Tú: "Mándasela a mi jefe con el asunto 'Proyecto terminado'"
+Bot: *Borrador IA Creado*
+     *Para:* jefe@example.com
+     *Asunto:* Proyecto terminado
+     [Contenido del email...]
+     📎 [Imagen adjunta]
+     _¿Lo envío? (Responde Sí)_
+```
 
 ## 🔧 Tecnologías
 
@@ -147,6 +204,22 @@ type AIResponse struct {
 - **Singleton**: Utils, Repository pattern
 - **Dependency Injection**: Controllers y Services
 - **Separation of Concerns**: Capas bien definidas (Controller → Service → Repository)
+- **Caché con TTL**: Sistema de caché temporal para imágenes con limpieza automática (30 min TTL)
+- **Thread-Safe**: Protección concurrente con mutex para operaciones sobre el caché
+
+## 🔐 Características Técnicas
+
+### Gestión de Imágenes
+- **Descarga Automática**: Las imágenes se descargan automáticamente al recibirlas
+- **Caché Temporal**: Las imágenes se almacenan en memoria con timestamp
+- **Limpieza Automática**: Sistema de limpieza que elimina imágenes expiradas cada 2 minutos
+- **TTL Configurable**: Las imágenes expiran después de 30 minutos sin uso
+- **Detección de Tipo**: Identificación automática del tipo MIME y extensión de archivo
+
+### Codificación UTF-8
+- **Asuntos Blindados**: Codificación RFC 2047 para asuntos con caracteres especiales
+- **Cuerpo Base64**: Codificación Base64 del cuerpo cuando hay adjuntos
+- **Soporte Completo**: Tildes, eñes, emojis y caracteres especiales funcionan correctamente
 
 ## 📄 Licencia
 
