@@ -247,8 +247,6 @@ Este proyecto es privado y confidencial.
 
 **Desarrollado con ❤️ usando Go y Gemini AI**
 
-By: Faku y Markos 🤡
-
 [Reportar Bug](https://github.com/fakugemda/wpp-google-go/issues) · [Solicitar Feature](https://github.com/fakugemda/wpp-google-go/issues)
 
 </div>
