@@ -82,7 +82,7 @@ func (wppc *WhatsappController) ProcessWebhook(ctx *fiber.Ctx) error {
 				}
 
 				// Guardar en caché global con bytes, MIME type y timestamp
-				service.SetImage(sender, &service.CachedImage{
+				service.SetImageWhatsApp(sender, &service.CachedImage{
 					Bytes:     imgBytes,
 					MimeType:  mimeType,
 					Filename:  "",
@@ -153,7 +153,7 @@ func (wppc *WhatsappController) handleAiDraft(sender string, data *models.AIResp
 	// Verificar si hay imagen en caché para este usuario
 	var attachmentData []byte
 	var filename string
-	if cachedImg, ok := service.GetImage(sender); ok {
+	if cachedImg, ok := service.GetImageWhatsApp(sender); ok {
 		attachmentData = cachedImg.Bytes
 		if cachedImg.Filename != "" {
 			filename = cachedImg.Filename
@@ -176,7 +176,7 @@ func (wppc *WhatsappController) handleAiDraft(sender string, data *models.AIResp
 
 func (wppc *WhatsappController) handleCancel(sender, msg string) {
 	delete(wppc.pendingDrafts, sender)
-	service.DeleteImage(sender)
+	service.DeleteImageWhatsApp(sender)
 	wppc.reply(sender, "🗑️ Operación cancelada. Memoria limpia.")
 }
 
@@ -193,7 +193,7 @@ func (wppc *WhatsappController) handleConfirm(sender, msg string) {
 	}
 
 	delete(wppc.pendingDrafts, sender)
-	service.DeleteImage(sender)
+	service.DeleteImageWhatsApp(sender)
 	wppc.reply(sender, "🚀 Correo enviado exitosamente!")
 }
 

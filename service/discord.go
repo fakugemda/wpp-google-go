@@ -80,10 +80,12 @@ func discordMessageHandler(s *discordgo.Session, m *discordgo.MessageCreate) {
 			mimeType := mime.TypeByExtension(filepath.Ext(attachment.Filename))
 			if mimeType == "" {
 				mimeType = "image/jpeg"
+			} else {
+				mimeType = NormalizeMimeType(mimeType)
 			}
 
 			// 3. Guardar en caché global
-			SetImage(m.Author.ID, &CachedImage{
+			SetImageDiscord(m.Author.ID, &CachedImage{
 				Bytes:     imgBytes,
 				MimeType:  mimeType,
 				Filename:  attachment.Filename,
@@ -116,7 +118,7 @@ func discordMessageHandler(s *discordgo.Session, m *discordgo.MessageCreate) {
 
 		// Verificar si hay imagen en caché para este usuario
 		var hasImage bool
-		if cachedImg, ok := GetImage(m.Author.ID); ok {
+		if cachedImg, ok := GetImageDiscord(m.Author.ID); ok {
 			hasImage = true
 			fmt.Printf("📎 [Discord] Incluyendo imagen en borrador (tipo: %s, tamaño: %d bytes)\n", cachedImg.MimeType, len(cachedImg.Bytes))
 		}
@@ -142,7 +144,7 @@ func discordMessageHandler(s *discordgo.Session, m *discordgo.MessageCreate) {
 		// Buscar imagen en caché
 		var attachmentData []byte
 		var filename string
-		if cachedImg, ok := GetImage(m.Author.ID); ok {
+		if cachedImg, ok := GetImageDiscord(m.Author.ID); ok {
 			attachmentData = cachedImg.Bytes
 			if cachedImg.Filename != "" {
 				filename = cachedImg.Filename
@@ -158,7 +160,7 @@ func discordMessageHandler(s *discordgo.Session, m *discordgo.MessageCreate) {
 		} else {
 			s.ChannelMessageSend(m.ChannelID, "✅ ¡Correo enviado exitosamente!")
 			delete(discordDrafts, m.Author.ID)
-			DeleteImage(m.Author.ID)
+			DeleteImageDiscord(m.Author.ID)
 		}
 	}
 }

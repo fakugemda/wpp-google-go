@@ -90,6 +90,8 @@ func CreateDraft(to, subject, body string, attachmentData []byte, filename strin
 		mimeType := mime.TypeByExtension(filepath.Ext(filename))
 		if mimeType == "" {
 			mimeType = "application/octet-stream"
+		} else {
+			mimeType = NormalizeMimeType(mimeType)
 		}
 
 		// Codificar archivo a Base64

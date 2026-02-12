@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strconv"
 	"time"
 	"whatsapp-gmail-bot/models"
 )
@@ -50,6 +51,8 @@ func DownloadMedia(mediaID string) ([]byte, string, error) {
 		return nil, "", fmt.Errorf("la respuesta de Meta no contiene URL de descarga")
 	}
 
+	mediaResp.MimeType = NormalizeMimeType(mediaResp.MimeType)
+
 	downReq, err := http.NewRequest("GET", mediaResp.URL, nil)
 	if err != nil {
 		return nil, "", fmt.Errorf("error creando request para descargar binario: %v", err)
@@ -64,13 +67,31 @@ func DownloadMedia(mediaID string) ([]byte, string, error) {
 	defer downResp.Body.Close()
 
 	if downResp.StatusCode != http.StatusOK {
-		bodyBytes, _ := io.ReadAll(downResp.Body)
+		// Limitar lectura del cuerpo de error
+		limitedBody := io.LimitReader(downResp.Body, 1024) // Máximo 1KB para mensajes de error
+		bodyBytes, _ := io.ReadAll(limitedBody)
 		return nil, "", fmt.Errorf("error descargando archivo (%s): %s", downResp.Status, string(bodyBytes))
 	}
 
-	fileBytes, err := io.ReadAll(downResp.Body)
+	// Verificar Content-Length si está disponible
+	if contentLength := downResp.Header.Get("Content-Length"); contentLength != "" {
+		size, err := strconv.ParseInt(contentLength, 10, 64)
+		if err == nil && size > MaxFileSize {
+			return nil, "", fmt.Errorf("archivo demasiado grande: %d bytes (máximo permitido: %d bytes)", size, MaxFileSize)
+		}
+	}
+
+	// Limitar la lectura usando io.LimitReader para prevenir DoS
+	limitedReader := io.LimitReader(downResp.Body, MaxFileSize+1) // +1 para detectar si excede
+
+	fileBytes, err := io.ReadAll(limitedReader)
 	if err != nil {
 		return nil, "", fmt.Errorf("error leyendo bytes del archivo: %v", err)
+	}
+
+	// Verificar si se alcanzó el límite
+	if len(fileBytes) > MaxFileSize {
+		return nil, "", fmt.Errorf("archivo demasiado grande: excede el límite de %d bytes", MaxFileSize)
 	}
 
 	if len(fileBytes) == 0 {
