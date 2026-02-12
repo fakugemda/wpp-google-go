@@ -135,5 +135,8 @@ func (dc *DiscordController) handleConfirmSendResponse(s *discordgo.Session, m *
 }
 
 func (dc *DiscordController) sendMessage(s *discordgo.Session, channelID, message string) {
-	s.ChannelMessageSend(channelID, message)
+	_, err := s.ChannelMessageSend(channelID, message)
+	if err != nil {
+		fmt.Printf("❌ Error enviando mensaje Discord a canal %s: %v\n", channelID, err)
+	}
 }
