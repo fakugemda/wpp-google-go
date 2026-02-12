@@ -3,6 +3,7 @@ package config
 import (
 	"log"
 	"os"
+	"whatsapp-gmail-bot/discord"
 	"whatsapp-gmail-bot/routes"
 	"whatsapp-gmail-bot/service"
 
@@ -13,7 +14,7 @@ import (
 func InitApp() {
 	service.InitGmail()
 	LoadContacts()
-	go service.StartDiscordService(GetContactsPrompt())
+	go discord.StartService(GetContactsPrompt())
 	app := fiber.New()
 	routes.RegisterWhatsappRoutes(app, Contacts, GetContactsPrompt())
 	port := os.Getenv("PORT")
