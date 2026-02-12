@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"strings"
-	"sync"
 	"time"
 	"whatsapp-gmail-bot/constants"
 	"whatsapp-gmail-bot/models"
@@ -18,40 +17,23 @@ type CommandHandler func(sender, msg string)
 
 var utilsController = utils.GetUtils()
 
-const (
-	ImageCacheTTL             = 30 * time.Minute
-	ImageCacheCleanupInterval = 2 * time.Minute
-)
-
-// CachedImage almacena los bytes, MIME type y timestamp de una imagen descargada
-type CachedImage struct {
-	Bytes     []byte
-	MimeType  string
-	CreatedAt time.Time
-}
-
 type WhatsappController struct {
-	pendingDrafts   map[string]string
-	imageCache      map[string]*CachedImage
-	imageCacheMutex sync.RWMutex // Mutex para proteger el acceso concurrente al caché
-	commands        map[string]CommandHandler
-	contacts        map[string]string
-	contactsList    string
-	metaWebhook     models.MetaWebhook
-	cleanupStopChan chan struct{} // Canal para detener la goroutine de limpieza
+	pendingDrafts map[string]string
+	commands      map[string]CommandHandler
+	contacts      map[string]string
+	contactsList  string
+	metaWebhook   models.MetaWebhook
 }
 
 func NewWhatsappController(contacts map[string]string, contactsList string) *WhatsappController {
 	wppc := &WhatsappController{
-		pendingDrafts:   make(map[string]string),
-		imageCache:      make(map[string]*CachedImage),
-		commands:        make(map[string]CommandHandler),
-		contacts:        contacts,
-		contactsList:    contactsList,
-		cleanupStopChan: make(chan struct{}),
+		pendingDrafts: make(map[string]string),
+		commands:      make(map[string]CommandHandler),
+		contacts:      contacts,
+		contactsList:  contactsList,
 	}
 	wppc.registerCommands()
-	go wppc.startImageCacheCleanup()
+	service.StartImageCacheCleanup()
 	return wppc
 }
 
@@ -99,14 +81,13 @@ func (wppc *WhatsappController) ProcessWebhook(ctx *fiber.Ctx) error {
 					return ctx.SendStatus(200)
 				}
 
-				// Guardar en caché con bytes, MIME type y timestamp
-				wppc.imageCacheMutex.Lock()
-				wppc.imageCache[sender] = &CachedImage{
+				// Guardar en caché global con bytes, MIME type y timestamp
+				service.SetImageWhatsApp(sender, &service.CachedImage{
 					Bytes:     imgBytes,
 					MimeType:  mimeType,
+					Filename:  "",
 					CreatedAt: time.Now(),
-				}
-				wppc.imageCacheMutex.Unlock()
+				})
 				fmt.Printf("✅ Imagen descargada y guardada en caché (tipo: %s, tamaño: %d bytes)\n", mimeType, len(imgBytes))
 
 				// Si tiene caption, lo usamos como prompt
@@ -172,13 +153,15 @@ func (wppc *WhatsappController) handleAiDraft(sender string, data *models.AIResp
 	// Verificar si hay imagen en caché para este usuario
 	var attachmentData []byte
 	var filename string
-	wppc.imageCacheMutex.RLock()
-	if cachedImg, ok := wppc.imageCache[sender]; ok {
+	if cachedImg, ok := service.GetImageWhatsApp(sender); ok {
 		attachmentData = cachedImg.Bytes
-		filename = wppc.getFilenameFromMimeType(cachedImg.MimeType)
+		if cachedImg.Filename != "" {
+			filename = cachedImg.Filename
+		} else {
+			filename = wppc.getFilenameFromMimeType(cachedImg.MimeType)
+		}
 		fmt.Printf("📎 Incluyendo imagen en el borrador (tipo: %s, tamaño: %d bytes)\n", cachedImg.MimeType, len(attachmentData))
 	}
-	wppc.imageCacheMutex.RUnlock()
 
 	draftID, err := wppc.createDraftWithAttachment(data, attachmentData, filename)
 	if err != nil {
@@ -193,9 +176,7 @@ func (wppc *WhatsappController) handleAiDraft(sender string, data *models.AIResp
 
 func (wppc *WhatsappController) handleCancel(sender, msg string) {
 	delete(wppc.pendingDrafts, sender)
-	wppc.imageCacheMutex.Lock()
-	delete(wppc.imageCache, sender)
-	wppc.imageCacheMutex.Unlock()
+	service.DeleteImageWhatsApp(sender)
 	wppc.reply(sender, "🗑️ Operación cancelada. Memoria limpia.")
 }
 
@@ -212,9 +193,7 @@ func (wppc *WhatsappController) handleConfirm(sender, msg string) {
 	}
 
 	delete(wppc.pendingDrafts, sender)
-	wppc.imageCacheMutex.Lock()
-	delete(wppc.imageCache, sender)
-	wppc.imageCacheMutex.Unlock()
+	service.DeleteImageWhatsApp(sender)
 	wppc.reply(sender, "🚀 Correo enviado exitosamente!")
 }
 
@@ -272,44 +251,4 @@ func (wppc *WhatsappController) getFilenameFromMimeType(mimeType string) string 
 func (wppc *WhatsappController) buildPreviewMessage(data *models.AIResponse) string {
 	return fmt.Sprintf("*Borrador IA Creado*\n\n*Para:* %s\n*Asunto:* %s\n\n%s\n\n_¿Lo envío? (Responde Sí)_",
 		data.To, data.Subject, data.Content)
-}
-
-// startImageCacheCleanup inicia una goroutine que limpia periódicamente las imágenes expiradas del caché
-func (wppc *WhatsappController) startImageCacheCleanup() {
-	ticker := time.NewTicker(ImageCacheCleanupInterval)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ticker.C:
-			wppc.cleanExpiredImages()
-		case <-wppc.cleanupStopChan:
-			fmt.Println("🛑 Deteniendo limpieza de caché de imágenes...")
-			return
-		}
-	}
-}
-
-// cleanExpiredImages elimina las imágenes del caché que han expirado según el TTL
-func (wppc *WhatsappController) cleanExpiredImages() {
-	wppc.imageCacheMutex.Lock()
-	defer wppc.imageCacheMutex.Unlock()
-
-	now := time.Now()
-	var expiredKeys []string
-
-	// Identificar imágenes expiradas
-	for key, cachedImg := range wppc.imageCache {
-		if now.Sub(cachedImg.CreatedAt) > ImageCacheTTL {
-			expiredKeys = append(expiredKeys, key)
-		}
-	}
-
-	// Eliminar imágenes expiradas
-	if len(expiredKeys) > 0 {
-		for _, key := range expiredKeys {
-			delete(wppc.imageCache, key)
-		}
-		fmt.Printf("🧹 Limpieza de caché: eliminadas %d imagen(es) expirada(s)\n", len(expiredKeys))
-	}
 }
