@@ -62,42 +62,47 @@ func discordMessageHandler(s *discordgo.Session, m *discordgo.MessageCreate) {
 	if len(m.Attachments) > 0 {
 		attachment := m.Attachments[0]
 
+		// Determinar tipo de archivo para mensaje descriptivo
 		isImage := attachment.Width > 0 || attachment.Height > 0 || isImageExtension(attachment.Filename)
-
+		fileType := "📄 Archivo"
+		receivedText := "recibido"
 		if isImage {
-			fmt.Printf("📸 [Discord] Imagen detectada de %s: %s\n", m.Author.Username, attachment.Filename)
-			s.ChannelMessageSend(m.ChannelID, "⬇️ Descargando imagen...")
+			fileType = "📸 Imagen"
+			receivedText = "recibida"
+		}
 
-			// 1. Descargar imagen
-			imgBytes, err := DownloadFile(attachment.URL)
-			if err != nil {
-				fmt.Printf("❌ Error descargando imagen de Discord: %s\n", err.Error())
-				s.ChannelMessageSend(m.ChannelID, "❌ Error descargando imagen: "+err.Error())
-				return
-			}
+		fmt.Printf("%s [Discord] Adjunto %s de %s: %s\n", fileType, receivedText, m.Author.Username, attachment.Filename)
+		s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("⬇️ Descargando %s...", attachment.Filename))
 
-			// 2. Detectar MIME type desde extensión
-			mimeType := mime.TypeByExtension(filepath.Ext(attachment.Filename))
-			if mimeType == "" {
-				mimeType = "image/jpeg"
-			} else {
-				mimeType = NormalizeMimeType(mimeType)
-			}
+		// 1. Descargar archivo (funciona para cualquier tipo)
+		fileBytes, err := DownloadFile(attachment.URL)
+		if err != nil {
+			fmt.Printf("❌ Error descargando archivo de Discord: %s\n", err.Error())
+			s.ChannelMessageSend(m.ChannelID, "❌ Error descargando archivo: "+err.Error())
+			return
+		}
 
-			// 3. Guardar en caché global
-			SetImageDiscord(m.Author.ID, &CachedImage{
-				Bytes:     imgBytes,
-				MimeType:  mimeType,
-				Filename:  attachment.Filename,
-				CreatedAt: time.Now(),
-			})
+		// 2. Detectar MIME type desde extensión
+		mimeType := mime.TypeByExtension(filepath.Ext(attachment.Filename))
+		if mimeType == "" {
+			mimeType = "application/octet-stream" // Tipo genérico por defecto
+		} else {
+			mimeType = NormalizeMimeType(mimeType)
+		}
 
-			fmt.Printf("✅ [Discord] Imagen guardada en caché (tipo: %s, tamaño: %d bytes)\n", mimeType, len(imgBytes))
-			s.ChannelMessageSend(m.ChannelID, "✅ Imagen guardada temporalmente. ¿Qué hago con ella?")
+		// 3. Guardar en caché global
+		SetImageDiscord(m.Author.ID, &CachedImage{
+			Bytes:     fileBytes,
+			MimeType:  mimeType,
+			Filename:  attachment.Filename,
+			CreatedAt: time.Now(),
+		})
 
-			if promptText == "" {
-				return
-			}
+		fmt.Printf("✅ [Discord] %s guardado en caché (tipo: %s, tamaño: %d bytes)\n", fileType, mimeType, len(fileBytes))
+		s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("✅ %s guardado temporalmente. ¿Qué hago con él?", attachment.Filename))
+
+		if promptText == "" {
+			return
 		}
 	}
 
@@ -116,20 +121,24 @@ func discordMessageHandler(s *discordgo.Session, m *discordgo.MessageCreate) {
 	case "EMAIL_DRAFT":
 		discordDrafts[m.Author.ID] = aiResp
 
-		// Verificar si hay imagen en caché para este usuario
-		var hasImage bool
+		// Verificar si hay adjunto en caché para este usuario
+		var hasAttachment bool
 		if cachedImg, ok := GetImageDiscord(m.Author.ID); ok {
-			hasImage = true
-			fmt.Printf("📎 [Discord] Incluyendo imagen en borrador (tipo: %s, tamaño: %d bytes)\n", cachedImg.MimeType, len(cachedImg.Bytes))
+			hasAttachment = true
+			attachmentType := "archivo"
+			if strings.HasPrefix(cachedImg.MimeType, "image/") {
+				attachmentType = "imagen"
+			}
+			fmt.Printf("📎 [Discord] Incluyendo %s en borrador (tipo: %s, tamaño: %d bytes)\n", attachmentType, cachedImg.MimeType, len(cachedImg.Bytes))
 		}
 
-		imageNote := ""
-		if hasImage {
-			imageNote = "\n📎 _Incluye imagen adjunta_"
+		attachmentNote := ""
+		if hasAttachment {
+			attachmentNote = "\n📎 _Incluye adjunto_"
 		}
 
 		msg := fmt.Sprintf("**📝 Borrador Generado**\n\n**Para:** `%s`\n**Asunto:** `%s`\n\n%s%s\n\n_Escribe 'sí' o 'envíalo' para confirmar._",
-			aiResp.To, aiResp.Subject, aiResp.Content, imageNote)
+			aiResp.To, aiResp.Subject, aiResp.Content, attachmentNote)
 		s.ChannelMessageSend(m.ChannelID, msg)
 
 	case "CONFIRM_SEND":
@@ -141,7 +150,7 @@ func discordMessageHandler(s *discordgo.Session, m *discordgo.MessageCreate) {
 
 		s.ChannelMessageSend(m.ChannelID, "🚀 Enviando correo...")
 
-		// Buscar imagen en caché
+		// Buscar adjunto en caché
 		var attachmentData []byte
 		var filename string
 		if cachedImg, ok := GetImageDiscord(m.Author.ID); ok {
@@ -151,7 +160,11 @@ func discordMessageHandler(s *discordgo.Session, m *discordgo.MessageCreate) {
 			} else {
 				filename = getFilenameFromMimeType(cachedImg.MimeType)
 			}
-			fmt.Printf("📎 [Discord] Adjuntando imagen al correo: %s\n", filename)
+			attachmentType := "archivo"
+			if strings.HasPrefix(cachedImg.MimeType, "image/") {
+				attachmentType = "imagen"
+			}
+			fmt.Printf("📎 [Discord] Adjuntando %s al correo: %s\n", attachmentType, filename)
 		}
 
 		err := SendEmail(draft.To, draft.Subject, draft.Content, attachmentData, filename)
@@ -180,22 +193,33 @@ func isImageExtension(filename string) bool {
 // getFilenameFromMimeType convierte un MIME type a un nombre de archivo con extensión apropiada
 func getFilenameFromMimeType(mimeType string) string {
 	mimeToExt := map[string]string{
-		"image/jpeg":      ".jpg",
-		"image/jpg":       ".jpg",
-		"image/png":       ".png",
-		"image/gif":       ".gif",
-		"image/webp":      ".webp",
-		"image/bmp":       ".bmp",
-		"image/tiff":      ".tiff",
-		"image/svg+xml":   ".svg",
-		"application/pdf": ".pdf",
+		"image/jpeg":         ".jpg",
+		"image/jpg":          ".jpg",
+		"image/png":          ".png",
+		"image/gif":          ".gif",
+		"image/webp":         ".webp",
+		"image/bmp":          ".bmp",
+		"image/tiff":         ".tiff",
+		"image/svg+xml":      ".svg",
+		"application/pdf":    ".pdf",
+		"application/msword": ".doc",
+		"application/vnd.openxmlformats-officedocument.wordprocessingml.document": ".docx",
+		"application/vnd.ms-excel": ".xls",
+		"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": ".xlsx",
+		"text/plain": ".txt",
+		"text/csv":   ".csv",
 	}
 
 	if ext, ok := mimeToExt[strings.ToLower(mimeType)]; ok {
-		return "foto_discord" + ext
+		// Determinar prefijo según tipo
+		if strings.HasPrefix(mimeType, "image/") {
+			return "foto_discord" + ext
+		}
+		return "archivo_discord" + ext
 	}
 
-	return "foto_discord.jpg"
+	// Fallback genérico (no siempre .jpg)
+	return "archivo_discord.bin"
 }
 
 // SendEmail crea un borrador y lo envía inmediatamente
