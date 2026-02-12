@@ -62,42 +62,44 @@ func discordMessageHandler(s *discordgo.Session, m *discordgo.MessageCreate) {
 	if len(m.Attachments) > 0 {
 		attachment := m.Attachments[0]
 
-		isImage := attachment.Width > 0 || attachment.Height > 0 || isImageExtension(attachment.Filename)
+		// Determinar tipo de archivo para mensaje descriptivo
+		fileType := "📄 Archivo"
+		if attachment.Width > 0 || attachment.Height > 0 || isImageExtension(attachment.Filename) {
+			fileType = "📸 Imagen"
+		}
 
-		if isImage {
-			fmt.Printf("📸 [Discord] Imagen detectada de %s: %s\n", m.Author.Username, attachment.Filename)
-			s.ChannelMessageSend(m.ChannelID, "⬇️ Descargando imagen...")
+		fmt.Printf("%s [Discord] %s recibido de %s: %s\n", fileType, fileType, m.Author.Username, attachment.Filename)
+		s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("⬇️ Descargando %s...", attachment.Filename))
 
-			// 1. Descargar imagen
-			imgBytes, err := DownloadFile(attachment.URL)
-			if err != nil {
-				fmt.Printf("❌ Error descargando imagen de Discord: %s\n", err.Error())
-				s.ChannelMessageSend(m.ChannelID, "❌ Error descargando imagen: "+err.Error())
-				return
-			}
+		// 1. Descargar archivo (funciona para cualquier tipo)
+		fileBytes, err := DownloadFile(attachment.URL)
+		if err != nil {
+			fmt.Printf("❌ Error descargando archivo de Discord: %s\n", err.Error())
+			s.ChannelMessageSend(m.ChannelID, "❌ Error descargando archivo: "+err.Error())
+			return
+		}
 
-			// 2. Detectar MIME type desde extensión
-			mimeType := mime.TypeByExtension(filepath.Ext(attachment.Filename))
-			if mimeType == "" {
-				mimeType = "image/jpeg"
-			} else {
-				mimeType = NormalizeMimeType(mimeType)
-			}
+		// 2. Detectar MIME type desde extensión
+		mimeType := mime.TypeByExtension(filepath.Ext(attachment.Filename))
+		if mimeType == "" {
+			mimeType = "application/octet-stream" // Tipo genérico por defecto
+		} else {
+			mimeType = NormalizeMimeType(mimeType)
+		}
 
-			// 3. Guardar en caché global
-			SetImageDiscord(m.Author.ID, &CachedImage{
-				Bytes:     imgBytes,
-				MimeType:  mimeType,
-				Filename:  attachment.Filename,
-				CreatedAt: time.Now(),
-			})
+		// 3. Guardar en caché global
+		SetImageDiscord(m.Author.ID, &CachedImage{
+			Bytes:     fileBytes,
+			MimeType:  mimeType,
+			Filename:  attachment.Filename,
+			CreatedAt: time.Now(),
+		})
 
-			fmt.Printf("✅ [Discord] Imagen guardada en caché (tipo: %s, tamaño: %d bytes)\n", mimeType, len(imgBytes))
-			s.ChannelMessageSend(m.ChannelID, "✅ Imagen guardada temporalmente. ¿Qué hago con ella?")
+		fmt.Printf("✅ [Discord] %s guardado en caché (tipo: %s, tamaño: %d bytes)\n", fileType, mimeType, len(fileBytes))
+		s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("✅ %s guardado temporalmente. ¿Qué hago con él?", attachment.Filename))
 
-			if promptText == "" {
-				return
-			}
+		if promptText == "" {
+			return
 		}
 	}
 
