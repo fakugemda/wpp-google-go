@@ -15,7 +15,7 @@ type MetaWebhook struct {
 			Value struct {
 				Messages []struct {
 					From string `json:"from"`
-					Type string `json:"type"` // "text" o "image"
+					Type string `json:"type"` // "text", "image" o "document"
 					Text struct {
 						Body string `json:"body"`
 					} `json:"text,omitempty"`
@@ -23,6 +23,12 @@ type MetaWebhook struct {
 						ID      string `json:"id"`
 						Caption string `json:"caption,omitempty"`
 					} `json:"image,omitempty"`
+					Document struct {
+						ID       string `json:"id"`
+						Caption  string `json:"caption,omitempty"`
+						Filename string `json:"filename,omitempty"`
+						MimeType string `json:"mime_type,omitempty"`
+					} `json:"document,omitempty"`
 				} `json:"messages"`
 			} `json:"value"`
 		} `json:"changes"`

@@ -98,6 +98,43 @@ func (wppc *WhatsappController) ProcessWebhook(ctx *fiber.Ctx) error {
 					// Si no tiene caption, pedimos instrucciones
 					wppc.reply(sender, "📷 Foto recibida. ¿Qué quieres que haga con ella? (Ej: 'Mándasela a mamá')")
 				}
+			} else if msgObj.Type == "document" {
+				fmt.Printf("📄 Documento recibido de %s, ID: %s, Nombre: %s\n", sender, msgObj.Document.ID, msgObj.Document.Filename)
+
+				// Descargar el documento
+				docBytes, mimeType, err := service.DownloadMedia(msgObj.Document.ID)
+				if err != nil {
+					fmt.Printf("❌ Error descargando documento: %s\n", err.Error())
+					wppc.reply(sender, "⚠️ Error al procesar el documento. Intenta de nuevo.")
+					return ctx.SendStatus(200)
+				}
+
+				// Usar MIME type del documento si está disponible, sino el detectado
+				if msgObj.Document.MimeType != "" {
+					mimeType = service.NormalizeMimeType(msgObj.Document.MimeType)
+				}
+
+				// Guardar en caché global con nombre de archivo real
+				service.SetImageWhatsApp(sender, &service.CachedImage{
+					Bytes:     docBytes,
+					MimeType:  mimeType,
+					Filename:  msgObj.Document.Filename,
+					CreatedAt: time.Now(),
+				})
+				fmt.Printf("✅ Documento descargado y guardado en caché (tipo: %s, tamaño: %d bytes)\n", mimeType, len(docBytes))
+
+				// Si tiene caption, lo usamos como prompt
+				if msgObj.Document.Caption != "" {
+					fmt.Printf("📝 Caption recibido: %s\n", msgObj.Document.Caption)
+					go wppc.handleCommand(sender, msgObj.Document.Caption)
+				} else {
+					// Si no tiene caption, pedimos instrucciones
+					filename := msgObj.Document.Filename
+					if filename == "" {
+						filename = "el archivo"
+					}
+					wppc.reply(sender, fmt.Sprintf("📄 Recibí el archivo '%s'. ¿Qué quieres que haga con él? (Ej: 'Mándaselo a Juan')", filename))
+				}
 			} else if msgObj.Type == "text" {
 				// CASO 2: ES UN MENSAJE DE TEXTO
 				text := msgObj.Text.Body
