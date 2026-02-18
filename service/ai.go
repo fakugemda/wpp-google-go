@@ -63,7 +63,10 @@ func ProcessIntent(userMessage, contactsList string) (*models.AIResponse, error)
 
 	var aiResponse models.AIResponse
 	if err := json.Unmarshal([]byte(cleanJSON), &aiResponse); err != nil {
-		fmt.Printf("❌ Error parseando JSON sucio: %s\n", rawJSON)
+		fmt.Printf("❌ Error parseando JSON\n")
+		fmt.Printf("   Raw: %s\n", rawJSON)
+		fmt.Printf("   Clean: %s\n", cleanJSON)
+		fmt.Printf("   Error: %s\n", err.Error())
 		return nil, fmt.Errorf("error parseando JSON: %s", err.Error())
 	}
 
