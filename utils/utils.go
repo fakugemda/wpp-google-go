@@ -24,13 +24,58 @@ func GetUtils() *Utils {
 	return utilsInstance
 }
 
-// CleanJSONString elimina los bloques de markdown ```json y ```
+// CleanJSONString elimina los bloques de markdown ```json y ``` y extrae solo el JSON válido
 func (u *Utils) CleanJSONString(s string) string {
 	s = strings.TrimSpace(s)
+	
+	// Eliminar bloques de markdown
 	s = strings.TrimPrefix(s, "```json")
 	s = strings.TrimPrefix(s, "```")
 	s = strings.TrimSuffix(s, "```")
-	return strings.TrimSpace(s)
+	s = strings.TrimSpace(s)
+	
+	// Encontrar el inicio del JSON (primer '{' o '[')
+	startIdx := strings.IndexAny(s, "{[")
+	if startIdx == -1 {
+		return s
+	}
+	
+	// Encontrar el final del JSON válido
+	// Para objetos: buscar el '}' que cierra
+	// Para arrays: buscar el ']' que cierra
+	isObject := s[startIdx] == '{'
+	
+	if isObject {
+		// Contar llaves para encontrar el cierre correcto
+		braceCount := 0
+		for i := startIdx; i < len(s); i++ {
+			switch s[i] {
+			case '{':
+				braceCount++
+			case '}':
+				braceCount--
+				if braceCount == 0 {
+					return strings.TrimSpace(s[startIdx : i+1])
+				}
+			}
+		}
+	} else {
+		// Contar corchetes para arrays
+		bracketCount := 0
+		for i := startIdx; i < len(s); i++ {
+			switch s[i] {
+			case '[':
+				bracketCount++
+			case ']':
+				bracketCount--
+				if bracketCount == 0 {
+					return strings.TrimSpace(s[startIdx : i+1])
+				}
+			}
+		}
+	}
+	
+	return strings.TrimSpace(s[startIdx:])
 }
 
 // IsValidEmail valida el formato completo de un email
