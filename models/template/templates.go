@@ -50,3 +50,23 @@ func BuildPrompt(userMessage, contactsList string) string {
 	}
 	return fmt.Sprintf(SystemPrompt, contactsList, userMessage)
 }
+
+// CorrectionPrompt: Prompt para corregir un borrador existente
+const CorrectionPrompt = `Tengo este borrador de correo electrónico pendiente de envío:
+
+Para: %s
+Asunto: %s
+Cuerpo:
+%s
+
+El usuario quiere aplicar esta corrección: "%s"
+
+Aplica la corrección manteniendo el mismo destinatario y tono, a menos que la corrección indique lo contrario.
+Devuelve el email corregido como JSON puro con este formato exacto:
+{"type": "EMAIL_DRAFT", "to": "...", "subject": "...", "content": "..."}
+NO uses markdown, solo JSON puro.`
+
+// BuildCorrectionPrompt: Construye el prompt para corregir un borrador existente
+func BuildCorrectionPrompt(to, subject, content, correction string) string {
+	return fmt.Sprintf(CorrectionPrompt, to, subject, content, correction)
+}
