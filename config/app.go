@@ -8,10 +8,22 @@ import (
 	"whatsapp-gmail-bot/service"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/joho/godotenv"
 )
 
 // InitApp - Inicializa toda la aplicación
 func InitApp() {
+	if err := godotenv.Load(); err != nil {
+		log.Fatal("Error al cargar variables de entorno")
+	}
+
+	// Cargar y validar todas las variables de entorno necesarias
+	geminiAPIKey := os.Getenv("GEMINI_API_KEY")
+	if geminiAPIKey == "" {
+		log.Fatal("GEMINI_API_KEY no está configurada")
+	}
+	service.GeminiAPIKey = geminiAPIKey
+
 	service.InitGmail()
 	LoadContacts()
 	go discord.StartService(GetContactsPrompt())

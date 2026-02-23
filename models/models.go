@@ -29,6 +29,13 @@ type MetaWebhook struct {
 						Filename string `json:"filename,omitempty"`
 						MimeType string `json:"mime_type,omitempty"`
 					} `json:"document,omitempty"`
+					Interactive struct {
+						Type        string `json:"type"`
+						ButtonReply struct {
+							ID    string `json:"id"`
+							Title string `json:"title"`
+						} `json:"button_reply"`
+					} `json:"interactive,omitempty"`
 				} `json:"messages"`
 			} `json:"value"`
 		} `json:"changes"`

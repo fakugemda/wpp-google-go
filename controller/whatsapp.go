@@ -18,19 +18,21 @@ type CommandHandler func(sender, msg string)
 var utilsController = utils.GetUtils()
 
 type WhatsappController struct {
-	pendingDrafts map[string]string
-	commands      map[string]CommandHandler
-	contacts      map[string]string
-	contactsList  string
-	metaWebhook   models.MetaWebhook
+	pendingDrafts    map[string]string
+	pendingDraftData map[string]*models.AIResponse // borrador actual para correcciones
+	commands         map[string]CommandHandler
+	contacts         map[string]string
+	contactsList     string
+	metaWebhook      models.MetaWebhook
 }
 
 func NewWhatsappController(contacts map[string]string, contactsList string) *WhatsappController {
 	wppc := &WhatsappController{
-		pendingDrafts: make(map[string]string),
-		commands:      make(map[string]CommandHandler),
-		contacts:      contacts,
-		contactsList:  contactsList,
+		pendingDrafts:    make(map[string]string),
+		pendingDraftData: make(map[string]*models.AIResponse),
+		commands:         make(map[string]CommandHandler),
+		contacts:         contacts,
+		contactsList:     contactsList,
 	}
 	wppc.registerCommands()
 	service.StartImageCacheCleanup()
@@ -135,8 +137,14 @@ func (wppc *WhatsappController) ProcessWebhook(ctx *fiber.Ctx) error {
 					}
 					wppc.reply(sender, fmt.Sprintf("📄 Recibí el archivo '%s'. ¿Qué quieres que haga con él? (Ej: 'Mándaselo a Juan')", filename))
 				}
+			} else if msgObj.Type == "interactive" && msgObj.Interactive.Type == "button_reply" {
+				buttonID := msgObj.Interactive.ButtonReply.ID
+				fmt.Printf("🔘 Botón presionado por %s: %s\n", sender, buttonID)
+				if buttonID == constants.BUTTON_CONFIRM_ID {
+					go wppc.handleConfirm(sender, "")
+				}
 			} else if msgObj.Type == "text" {
-				// CASO 2: ES UN MENSAJE DE TEXTO
+				// CASO: ES UN MENSAJE DE TEXTO
 				text := msgObj.Text.Body
 				fmt.Printf("📩 Mensaje de %s: %s\n", sender, text)
 				go wppc.handleCommand(sender, text)
@@ -154,6 +162,13 @@ func (wppc *WhatsappController) handleCommand(sender, msg string) {
 
 	if handler, exists := wppc.commands[msgLower]; exists {
 		handler(sender, msg)
+		return
+	}
+
+	// Si hay un borrador pendiente, tratar el mensaje como corrección
+	if existingDraft, hasDraft := wppc.pendingDraftData[sender]; hasDraft {
+		fmt.Printf("✏️ Corrección de borrador de %s: %s\n", sender, msg)
+		wppc.handleCorrection(sender, msg, existingDraft)
 		return
 	}
 
@@ -176,6 +191,24 @@ func (wppc *WhatsappController) handleCommand(sender, msg string) {
 	default:
 		wppc.reply(sender, "🤖 No entendí la respuesta de la IA.")
 	}
+}
+
+// handleCorrection - Corrige el borrador pendiente con la instrucción del usuario
+func (wppc *WhatsappController) handleCorrection(sender, correctionMsg string, existingDraft *models.AIResponse) {
+	wppc.reply(sender, "✏️ Corrigiendo el borrador...")
+
+	correctedDraft, err := service.ProcessCorrection(existingDraft, correctionMsg)
+	if err != nil {
+		fmt.Printf("Error corrigiendo draft: %s\n", err.Error())
+		wppc.reply(sender, "⚠️ No pude aplicar la corrección. Intenta de nuevo.")
+		return
+	}
+
+	delete(wppc.pendingDrafts, sender)
+	delete(wppc.pendingDraftData, sender)
+
+	// Crear y mostrar el nuevo borrador corregido
+	wppc.handleAiDraft(sender, correctedDraft)
 }
 
 // handleAiDraft
@@ -208,11 +241,24 @@ func (wppc *WhatsappController) handleAiDraft(sender string, data *models.AIResp
 	}
 
 	wppc.pendingDrafts[sender] = draftID
-	wppc.reply(sender, wppc.buildPreviewMessage(data))
+	wppc.pendingDraftData[sender] = data // guardar para posibles correcciones
+
+	// Enviar preview con botón interactivo de confirmación
+	previewBody := wppc.buildPreviewMessage(data)
+	confirmBtn := service.InteractiveButton{
+		ID:    constants.BUTTON_CONFIRM_ID,
+		Title: "✅ Sí, enviarlo",
+	}
+	if err := service.SendInteractiveButtons(sender, previewBody, []service.InteractiveButton{confirmBtn}); err != nil {
+		fmt.Printf("❌ Error enviando botones: %v\n", err)
+		// Fallback: texto plano con instrucciones
+		wppc.reply(sender, previewBody+"\n\n_¿Lo envío? (Responde Sí)_")
+	}
 }
 
 func (wppc *WhatsappController) handleCancel(sender, msg string) {
 	delete(wppc.pendingDrafts, sender)
+	delete(wppc.pendingDraftData, sender)
 	service.DeleteImageWhatsApp(sender)
 	wppc.reply(sender, "🗑️ Operación cancelada. Memoria limpia.")
 }
@@ -230,6 +276,7 @@ func (wppc *WhatsappController) handleConfirm(sender, msg string) {
 	}
 
 	delete(wppc.pendingDrafts, sender)
+	delete(wppc.pendingDraftData, sender)
 	service.DeleteImageWhatsApp(sender)
 	wppc.reply(sender, "🚀 Correo enviado exitosamente!")
 }
@@ -286,6 +333,6 @@ func (wppc *WhatsappController) getFilenameFromMimeType(mimeType string) string 
 }
 
 func (wppc *WhatsappController) buildPreviewMessage(data *models.AIResponse) string {
-	return fmt.Sprintf("*Borrador IA Creado*\n\n*Para:* %s\n*Asunto:* %s\n\n%s\n\n_¿Lo envío? (Responde Sí)_",
+	return fmt.Sprintf("*Borrador IA Creado* ✉️\n\n*Para:* %s\n*Asunto:* %s\n\n%s",
 		data.To, data.Subject, data.Content)
 }

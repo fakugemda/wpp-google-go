@@ -67,3 +67,76 @@ func SendWhatsAppMessage(to string, message string) error {
 
 	return nil
 }
+
+// InteractiveButton - Representa un botón de respuesta rápida
+type InteractiveButton struct {
+	ID    string
+	Title string
+}
+
+// SendInteractiveButtons - Envía un mensaje interactivo con botones de respuesta rápida
+func SendInteractiveButtons(to, bodyText string, buttons []InteractiveButton) error {
+	token := os.Getenv("META_TOKEN")
+	phoneID := os.Getenv("META_PHONE_ID")
+
+	to = utilsMeta.NormalizeArgPhoneNumber(to)
+
+	if token == "" {
+		return fmt.Errorf("META_TOKEN no está configurada")
+	}
+	if phoneID == "" {
+		return fmt.Errorf("META_PHONE_ID no está configurada")
+	}
+
+	btnList := make([]map[string]interface{}, 0, len(buttons))
+	for _, b := range buttons {
+		btnList = append(btnList, map[string]interface{}{
+			"type": "reply",
+			"reply": map[string]string{
+				"id":    b.ID,
+				"title": b.Title,
+			},
+		})
+	}
+
+	url := fmt.Sprintf("https://graph.facebook.com/v22.0/%s/messages", phoneID)
+
+	payload := map[string]interface{}{
+		"messaging_product": "whatsapp",
+		"recipient_type":    "individual",
+		"to":                to,
+		"type":              "interactive",
+		"interactive": map[string]interface{}{
+			"type": "button",
+			"body": map[string]string{"text": bodyText},
+			"action": map[string]interface{}{
+				"buttons": btnList,
+			},
+		},
+	}
+
+	jsonBody, _ := json.Marshal(payload)
+
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonBody))
+	if err != nil {
+		return fmt.Errorf("error creando request: %v", err)
+	}
+
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("error enviando a meta: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 400 {
+		buf := new(bytes.Buffer)
+		buf.ReadFrom(resp.Body)
+		return fmt.Errorf("error de Facebook (%s): %s", resp.Status, buf.String())
+	}
+
+	return nil
+}

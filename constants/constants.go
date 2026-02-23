@@ -11,6 +11,11 @@ const (
 	DEFAULT_SUBJECT     = "Mail enviado desde WhatsApp"
 )
 
+// Interactive buttons
+const (
+	BUTTON_CONFIRM_ID = "confirm_send"
+)
+
 const (
 	GEMINI_MODEL = "gemini-2.5-flash-lite"
 )
