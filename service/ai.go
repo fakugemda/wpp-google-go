@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
 	"time"
 	"whatsapp-gmail-bot/constants"
 	"whatsapp-gmail-bot/models"
@@ -17,6 +16,9 @@ import (
 	"google.golang.org/api/option"
 )
 
+// GeminiAPIKey se inicializa en config/app.go al arrancar el microservicio
+var GeminiAPIKey string
+
 var utilsAI = utils.GetUtils()
 
 // ProcessIntent - Procesa el mensaje usando Gemini AI
@@ -24,12 +26,7 @@ func ProcessIntent(userMessage, contactsList string) (*models.AIResponse, error)
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	apiKey := os.Getenv("GEMINI_API_KEY")
-	if apiKey == "" {
-		return nil, fmt.Errorf("GEMINI_API_KEY no está configurada")
-	}
-
-	client, err := genai.NewClient(ctx, option.WithAPIKey(apiKey))
+	client, err := genai.NewClient(ctx, option.WithAPIKey(GeminiAPIKey))
 	if err != nil {
 		return nil, fmt.Errorf("error creando cliente: %s", err.Error())
 	}
@@ -78,12 +75,7 @@ func ProcessCorrection(existingDraft *models.AIResponse, correction string) (*mo
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	apiKey := os.Getenv("GEMINI_API_KEY")
-	if apiKey == "" {
-		return nil, fmt.Errorf("GEMINI_API_KEY no está configurada")
-	}
-
-	client, err := genai.NewClient(ctx, option.WithAPIKey(apiKey))
+	client, err := genai.NewClient(ctx, option.WithAPIKey(GeminiAPIKey))
 	if err != nil {
 		return nil, fmt.Errorf("error creando cliente: %s", err.Error())
 	}
