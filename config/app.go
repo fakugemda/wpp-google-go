@@ -13,8 +13,9 @@ import (
 
 // InitApp - Inicializa toda la aplicación
 func InitApp() {
+	// Cargar .env si existe (local); en Koyeb/cloud las variables vienen inyectadas en el entorno
 	if err := godotenv.Load(); err != nil {
-		log.Fatal("Error al cargar variables de entorno")
+		log.Println("No se encontró .env, usando variables de entorno del sistema")
 	}
 
 	// Cargar y validar todas las variables de entorno necesarias
