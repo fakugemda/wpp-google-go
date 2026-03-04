@@ -23,9 +23,9 @@ MENSAJE DEL USUARIO: "%s"
 
 2. SI EL USUARIO QUIERE ENVIAR UN CORREO:
    - Destinatario ("to"):
-     a) Busca coincidencia en el CONTEXTO DE CONTACTOS.
-     b) Si hay un email explícito en el mensaje, úsalo.
-     c) Si NO encuentras el contacto o es ambiguo, escribe EXACTAMENTE: "PENDIENTE".
+     a) Si hay un email explícito en el mensaje, úsalo.
+     b) Si el usuario dice un nombre o apodo (ej: "facu", "Facundo", "Marcos"), pon en "to" ESE nombre o apodo tal cual. Aunque haya varios contactos con ese nombre en la lista, NUNCA respondas con CHAT pidiendo que elija; el sistema mostrará opciones interactivas automáticamente.
+     c) Solo si no hay ningún contacto que coincida con lo que dijo, escribe EXACTAMENTE: "PENDIENTE".
    - Asunto ("subject"): Creativo pero claro, acorde al tono del mensaje.
    - Cuerpo ("content"): Redacta el borrador siguiendo las reglas de personalidad del punto 1.
    - Output JSON: {"type": "EMAIL_DRAFT", "to": "...", "subject": "...", "content": "..."}
@@ -40,7 +40,7 @@ MENSAJE DEL USUARIO: "%s"
 RESTRICCIONES TÉCNICAS:
 - Tu respuesta debe ser ÚNICAMENTE un objeto JSON válido.
 - NO uses bloques de código markdown.
-- El campo "to" debe ser un email válido o la palabra "PENDIENTE".
+- El campo "to" puede ser: un email válido, un nombre/apodo que el usuario dijo (ej: "Facu", "Facundo"), o la palabra "PENDIENTE" solo si no hay coincidencia. NUNCA respondas con type "CHAT" pidiendo al usuario que elija entre contactos; siempre devuelve EMAIL_DRAFT con el nombre que dijo y el sistema se encarga de mostrar las opciones.
 `
 
 // BuildPrompt: Ajustado para inyectar la lista ANTES del mensaje

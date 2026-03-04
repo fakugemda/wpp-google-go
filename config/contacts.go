@@ -4,9 +4,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"whatsapp-gmail-bot/models"
 )
 
-var Contacts = make(map[string]string)
+var Contacts []models.Contact
 
 func LoadContacts() {
 	envData := os.Getenv("CONTACTS_JSON")
@@ -34,15 +35,15 @@ func LoadContacts() {
 	fmt.Printf("Agenda cargada: %d contactos disponibles.\n", len(Contacts))
 }
 
-// GetContactsPrompt - Convierte el mapa a texto para que la IA lo lea
+// GetContactsPrompt - Convierte la lista de contactos a texto para que la IA lo lea
 func GetContactsPrompt() string {
 	if len(Contacts) == 0 {
 		return ""
 	}
 
 	list := "LISTA DE CONTACTOS DE CONFIANZA:\n"
-	for name, email := range Contacts {
-		list += fmt.Sprintf("- Nombre/Apodo: %s | Email: %s\n", name, email)
+	for _, c := range Contacts {
+		list += fmt.Sprintf("- Nombre: %s %s | Email: %s\n", c.Name, c.Lastname, c.Email)
 	}
 	return list
 }

@@ -17,22 +17,29 @@ type CommandHandler func(sender, msg string)
 
 var utilsController = utils.GetUtils()
 
-type WhatsappController struct {
-	pendingDrafts    map[string]string
-	pendingDraftData map[string]*models.AIResponse // borrador actual para correcciones
-	commands         map[string]CommandHandler
-	contacts         map[string]string
-	contactsList     string
-	metaWebhook      models.MetaWebhook
+type contactChoicePending struct {
+	Data       *models.AIResponse
+	Candidates []models.Contact
 }
 
-func NewWhatsappController(contacts map[string]string, contactsList string) *WhatsappController {
+type WhatsappController struct {
+	pendingDrafts        map[string]string
+	pendingDraftData     map[string]*models.AIResponse
+	pendingContactChoice map[string]contactChoicePending
+	commands             map[string]CommandHandler
+	contacts             []models.Contact
+	contactsList         string
+	metaWebhook          models.MetaWebhook
+}
+
+func NewWhatsappController(contacts []models.Contact, contactsList string) *WhatsappController {
 	wppc := &WhatsappController{
-		pendingDrafts:    make(map[string]string),
-		pendingDraftData: make(map[string]*models.AIResponse),
-		commands:         make(map[string]CommandHandler),
-		contacts:         contacts,
-		contactsList:     contactsList,
+		pendingDrafts:        make(map[string]string),
+		pendingDraftData:     make(map[string]*models.AIResponse),
+		pendingContactChoice: make(map[string]contactChoicePending),
+		commands:             make(map[string]CommandHandler),
+		contacts:             contacts,
+		contactsList:         contactsList,
 	}
 	wppc.registerCommands()
 	service.StartImageCacheCleanup()
@@ -140,8 +147,24 @@ func (wppc *WhatsappController) ProcessWebhook(ctx *fiber.Ctx) error {
 			} else if msgObj.Type == "interactive" && msgObj.Interactive.Type == "button_reply" {
 				buttonID := msgObj.Interactive.ButtonReply.ID
 				fmt.Printf("🔘 Botón presionado por %s: %s\n", sender, buttonID)
-				if buttonID == constants.BUTTON_CONFIRM_ID {
+				if pending, ok := wppc.pendingContactChoice[sender]; ok {
+					selectedEmail := buttonID
+					dataCopy := *pending.Data
+					dataCopy.To = selectedEmail
+					delete(wppc.pendingContactChoice, sender)
+					go wppc.createDraftAndSendConfirm(sender, &dataCopy)
+				} else if buttonID == constants.BUTTON_CONFIRM_ID {
 					go wppc.handleConfirm(sender, "")
+				}
+			} else if msgObj.Type == "interactive" && msgObj.Interactive.Type == "list_reply" {
+				rowID := msgObj.Interactive.ListReply.ID
+				fmt.Printf("📋 Lista elegida por %s: %s\n", sender, rowID)
+				if pending, ok := wppc.pendingContactChoice[sender]; ok {
+					selectedEmail := rowID
+					dataCopy := *pending.Data
+					dataCopy.To = selectedEmail
+					delete(wppc.pendingContactChoice, sender)
+					go wppc.createDraftAndSendConfirm(sender, &dataCopy)
 				}
 			} else if msgObj.Type == "text" {
 				// CASO: ES UN MENSAJE DE TEXTO
@@ -211,16 +234,8 @@ func (wppc *WhatsappController) handleCorrection(sender, correctionMsg string, e
 	wppc.handleAiDraft(sender, correctedDraft)
 }
 
-// handleAiDraft
-func (wppc *WhatsappController) handleAiDraft(sender string, data *models.AIResponse) {
-	fmt.Printf("IA generó: To=%s, Subject=%s\n", data.To, data.Subject)
-
-	if !wppc.validateAndResolveRecipient(data) {
-		wppc.reply(sender, fmt.Sprintf("Entendido: '%s'\n\nPero... ¿A quién se lo mando? (Dime el email)", data.Subject))
-		return
-	}
-
-	// Verificar si hay imagen en caché para este usuario
+// createDraftAndSendConfirm crea el borrador, lo guarda en pending y envía el preview con botón de confirmar.
+func (wppc *WhatsappController) createDraftAndSendConfirm(sender string, data *models.AIResponse) {
 	var attachmentData []byte
 	var filename string
 	if cachedImg, ok := service.GetImageWhatsApp(sender); ok {
@@ -228,7 +243,7 @@ func (wppc *WhatsappController) handleAiDraft(sender string, data *models.AIResp
 		if cachedImg.Filename != "" {
 			filename = cachedImg.Filename
 		} else {
-			filename = wppc.getFilenameFromMimeType(cachedImg.MimeType)
+			filename = utilsController.GetFilenameFromMimeType(cachedImg.MimeType)
 		}
 		fmt.Printf("📎 Incluyendo imagen en el borrador (tipo: %s, tamaño: %d bytes)\n", cachedImg.MimeType, len(attachmentData))
 	}
@@ -241,24 +256,56 @@ func (wppc *WhatsappController) handleAiDraft(sender string, data *models.AIResp
 	}
 
 	wppc.pendingDrafts[sender] = draftID
-	wppc.pendingDraftData[sender] = data // guardar para posibles correcciones
+	wppc.pendingDraftData[sender] = data
 
-	// Enviar preview con botón interactivo de confirmación
-	previewBody := wppc.buildPreviewMessage(data)
+	previewBody := service.BuildDraftPreviewMessage(data)
 	confirmBtn := service.InteractiveButton{
 		ID:    constants.BUTTON_CONFIRM_ID,
 		Title: "✅ Sí, enviarlo",
 	}
 	if err := service.SendInteractiveButtons(sender, previewBody, []service.InteractiveButton{confirmBtn}); err != nil {
 		fmt.Printf("❌ Error enviando botones: %v\n", err)
-		// Fallback: texto plano con instrucciones
 		wppc.reply(sender, previewBody+"\n\n_¿Lo envío? (Responde Sí)_")
+	}
+}
+
+// handleAiDraft delega la resolución del destinatario al service y solo ejecuta la acción resultante.
+func (wppc *WhatsappController) handleAiDraft(sender string, data *models.AIResponse) {
+	fmt.Printf("IA generó: Subject=%s\n", data.Subject)
+
+	result := service.ProcessDraftRecipient(data, wppc.contacts)
+	if result.LogMessage != "" {
+		fmt.Printf("  %s\n", result.LogMessage)
+	}
+
+	switch result.Action {
+	case service.DraftActionCreateDraft:
+		wppc.createDraftAndSendConfirm(sender, result.Data)
+	case service.DraftActionAskEmail:
+		wppc.reply(sender, result.Message)
+	case service.DraftActionShowContactChoice:
+		if result.TruncateMessage != "" {
+			wppc.reply(sender, result.TruncateMessage)
+		}
+		wppc.pendingContactChoice[sender] = contactChoicePending{Data: result.Data, Candidates: result.Candidates}
+		if result.UseButtons {
+			if err := service.SendInteractiveButtons(sender, result.BodyText, result.Buttons); err != nil {
+				fmt.Printf("❌ Error enviando botones de contacto: %v\n", err)
+				wppc.reply(sender, result.BodyText+"\nEscribí el email de la persona.")
+			}
+		} else {
+			if err := service.SendInteractiveList(sender, result.BodyText, "Ver contactos", result.Rows); err != nil {
+				fmt.Printf("❌ Error enviando lista de contactos: %v\n", err)
+				wppc.reply(sender, result.BodyText+"\nEscribí el email de la persona.")
+			}
+		}
 	}
 }
 
 func (wppc *WhatsappController) handleCancel(sender, msg string) {
 	delete(wppc.pendingDrafts, sender)
 	delete(wppc.pendingDraftData, sender)
+	delete(wppc.pendingContactChoice, sender)
 	service.DeleteImageWhatsApp(sender)
 	wppc.reply(sender, "🗑️ Operación cancelada. Memoria limpia.")
 }
@@ -288,51 +335,10 @@ func (wppc *WhatsappController) reply(to, message string) {
 	}
 }
 
-func (wppc *WhatsappController) validateAndResolveRecipient(data *models.AIResponse) bool {
-	if data.To == "PENDIENTE" || data.To == "" {
-		return false
-	}
-	data.To = strings.TrimSpace(data.To)
-	if !utilsController.IsValidEmail(data.To) {
-		if email, found := utilsController.ResolveContactByName(wppc.contacts, data.To); found {
-			data.To = email
-		} else {
-			return false
-		}
-	}
-	return true
-}
-
 func (wppc *WhatsappController) createDraft(data *models.AIResponse) (string, error) {
 	return service.CreateDraft(data.To, data.Subject, data.Content, nil, "")
 }
 
 func (wppc *WhatsappController) createDraftWithAttachment(data *models.AIResponse, attachmentData []byte, filename string) (string, error) {
 	return service.CreateDraft(data.To, data.Subject, data.Content, attachmentData, filename)
-}
-
-// getFilenameFromMimeType convierte un MIME type a un nombre de archivo con extensión apropiada
-func (wppc *WhatsappController) getFilenameFromMimeType(mimeType string) string {
-	mimeToExt := map[string]string{
-		"image/jpeg":      ".jpg",
-		"image/jpg":       ".jpg",
-		"image/png":       ".png",
-		"image/gif":       ".gif",
-		"image/webp":      ".webp",
-		"image/bmp":       ".bmp",
-		"image/tiff":      ".tiff",
-		"image/svg+xml":   ".svg",
-		"application/pdf": ".pdf",
-	}
-
-	if ext, ok := mimeToExt[strings.ToLower(mimeType)]; ok {
-		return "foto_whatsapp" + ext
-	}
-
-	return "foto_whatsapp.jpg"
-}
-
-func (wppc *WhatsappController) buildPreviewMessage(data *models.AIResponse) string {
-	return fmt.Sprintf("*Borrador IA Creado* ✉️\n\n*Para:* %s\n*Asunto:* %s\n\n%s",
-		data.To, data.Subject, data.Content)
 }

@@ -1,5 +1,12 @@
 package models
 
+// Estructura para el contacto
+type Contact struct {
+	Name     string `json:"name"`
+	Lastname string `json:"lastname"`
+	Email    string `json:"email"`
+}
+
 // Definimos la estructura que queremos que Gemini nos devuelva siempre
 type AIResponse struct {
 	Type    string `json:"type"`
@@ -35,6 +42,10 @@ type MetaWebhook struct {
 							ID    string `json:"id"`
 							Title string `json:"title"`
 						} `json:"button_reply"`
+						ListReply struct {
+							ID    string `json:"id"`
+							Title string `json:"title"`
+						} `json:"list_reply"`
 					} `json:"interactive,omitempty"`
 				} `json:"messages"`
 			} `json:"value"`
