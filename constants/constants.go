@@ -13,7 +13,9 @@ const (
 
 // Interactive buttons
 const (
-	BUTTON_CONFIRM_ID = "confirm_send"
+	BUTTON_CONFIRM_ID          = "confirm_send"
+	BUTTON_ADD_CONTACT_YES_ID  = "add_contact_yes"
+	BUTTON_ADD_CONTACT_NO_ID   = "add_contact_no"
 )
 
 const (

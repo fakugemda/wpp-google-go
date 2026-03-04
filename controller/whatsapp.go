@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"strings"
@@ -8,6 +9,7 @@ import (
 	"whatsapp-gmail-bot/constants"
 	"whatsapp-gmail-bot/models"
 	"whatsapp-gmail-bot/service"
+	"whatsapp-gmail-bot/store"
 	"whatsapp-gmail-bot/utils"
 
 	"github.com/gofiber/fiber/v2"
@@ -17,22 +19,31 @@ type CommandHandler func(sender, msg string)
 
 var utilsController = utils.GetUtils()
 
+type NewContactState struct {
+	Stage    string
+	TempName string
+}
+
 type WhatsappController struct {
-	pendingDrafts    map[string]string
-	pendingDraftData map[string]*models.AIResponse // borrador actual para correcciones
-	commands         map[string]CommandHandler
-	contacts         map[string]string
-	contactsList     string
-	metaWebhook      models.MetaWebhook
+	pendingDrafts       map[string]string
+	pendingDraftData    map[string]*models.AIResponse // borrador actual para correcciones
+	pendingNewRecipient map[string]*models.AIResponse // borrador IA sin destinatario resuelto
+	newContacts         map[string]*NewContactState   // flujo de alta de nuevo contacto
+	commands            map[string]CommandHandler
+	contacts            map[string]string
+	contactsList        string
+	metaWebhook         models.MetaWebhook
 }
 
 func NewWhatsappController(contacts map[string]string, contactsList string) *WhatsappController {
 	wppc := &WhatsappController{
-		pendingDrafts:    make(map[string]string),
-		pendingDraftData: make(map[string]*models.AIResponse),
-		commands:         make(map[string]CommandHandler),
-		contacts:         contacts,
-		contactsList:     contactsList,
+		pendingDrafts:       make(map[string]string),
+		pendingDraftData:    make(map[string]*models.AIResponse),
+		pendingNewRecipient: make(map[string]*models.AIResponse),
+		newContacts:         make(map[string]*NewContactState),
+		commands:            make(map[string]CommandHandler),
+		contacts:            contacts,
+		contactsList:        contactsList,
 	}
 	wppc.registerCommands()
 	service.StartImageCacheCleanup()
@@ -140,8 +151,13 @@ func (wppc *WhatsappController) ProcessWebhook(ctx *fiber.Ctx) error {
 			} else if msgObj.Type == "interactive" && msgObj.Interactive.Type == "button_reply" {
 				buttonID := msgObj.Interactive.ButtonReply.ID
 				fmt.Printf("🔘 Botón presionado por %s: %s\n", sender, buttonID)
-				if buttonID == constants.BUTTON_CONFIRM_ID {
+				switch buttonID {
+				case constants.BUTTON_CONFIRM_ID:
 					go wppc.handleConfirm(sender, "")
+				case constants.BUTTON_ADD_CONTACT_YES_ID:
+					wppc.startAddContactName(sender)
+				case constants.BUTTON_ADD_CONTACT_NO_ID:
+					wppc.cancelAddContactFlow(sender)
 				}
 			} else if msgObj.Type == "text" {
 				// CASO: ES UN MENSAJE DE TEXTO
@@ -159,6 +175,18 @@ func (wppc *WhatsappController) ProcessWebhook(ctx *fiber.Ctx) error {
 
 func (wppc *WhatsappController) handleCommand(sender, msg string) {
 	msgLower := strings.ToLower(strings.TrimSpace(msg))
+
+	// Flujo de alta de nuevo contacto (tiene prioridad sobre comandos normales)
+	if state, exists := wppc.newContacts[sender]; exists {
+		switch state.Stage {
+		case "awaiting_name":
+			wppc.handleNewContactName(sender, msg)
+			return
+		case "awaiting_email":
+			wppc.handleNewContactEmail(sender, msg, state)
+			return
+		}
+	}
 
 	if handler, exists := wppc.commands[msgLower]; exists {
 		handler(sender, msg)
@@ -215,11 +243,41 @@ func (wppc *WhatsappController) handleCorrection(sender, correctionMsg string, e
 func (wppc *WhatsappController) handleAiDraft(sender string, data *models.AIResponse) {
 	fmt.Printf("IA generó: To=%s, Subject=%s\n", data.To, data.Subject)
 
-	if !wppc.validateAndResolveRecipient(data) {
+	ok, unresolved := wppc.validateAndResolveRecipient(data)
+	if !ok {
+		// Si la IA devolvió un nombre que no existe en contactos, ofrecer guardarlo
+		if strings.TrimSpace(unresolved) != "" {
+			wppc.pendingNewRecipient[sender] = data
+			wppc.newContacts[sender] = &NewContactState{
+				Stage:    "awaiting_confirm",
+				TempName: unresolved,
+			}
+			body := fmt.Sprintf("No tengo a \"%s\" en tu agenda.\n\n¿Quieres guardarlo como contacto para futuros mails?", unresolved)
+			yesBtn := service.InteractiveButton{
+				ID:    constants.BUTTON_ADD_CONTACT_YES_ID,
+				Title: "Sí, agregar contacto", // máx 20 caracteres (WhatsApp)
+			}
+			noBtn := service.InteractiveButton{
+				ID:    constants.BUTTON_ADD_CONTACT_NO_ID,
+				Title: "No, solo esta vez",
+			}
+			if err := service.SendInteractiveButtons(sender, body, []service.InteractiveButton{yesBtn, noBtn}); err != nil {
+				fmt.Printf("❌ Error enviando botones alta contacto: %v\n", err)
+				wppc.reply(sender, body+"\n\nResponde con el email para enviar solo esta vez.")
+			}
+			return
+		}
+
+		// Caso original: To vacío o pendiente
 		wppc.reply(sender, fmt.Sprintf("Entendido: '%s'\n\nPero... ¿A quién se lo mando? (Dime el email)", data.Subject))
 		return
 	}
 
+	wppc.finalizeDraftWithRecipient(sender, data)
+}
+
+// finalizeDraftWithRecipient asume que data.To ya es un email válido
+func (wppc *WhatsappController) finalizeDraftWithRecipient(sender string, data *models.AIResponse) {
 	// Verificar si hay imagen en caché para este usuario
 	var attachmentData []byte
 	var filename string
@@ -288,19 +346,21 @@ func (wppc *WhatsappController) reply(to, message string) {
 	}
 }
 
-func (wppc *WhatsappController) validateAndResolveRecipient(data *models.AIResponse) bool {
+func (wppc *WhatsappController) validateAndResolveRecipient(data *models.AIResponse) (bool, string) {
 	if data.To == "PENDIENTE" || data.To == "" {
-		return false
+		return false, ""
 	}
 	data.To = strings.TrimSpace(data.To)
 	if !utilsController.IsValidEmail(data.To) {
 		if email, found := utilsController.ResolveContactByName(wppc.contacts, data.To); found {
 			data.To = email
-		} else {
-			return false
+			return true, ""
 		}
 	}
-	return true
+	if !utilsController.IsValidEmail(data.To) {
+		return false, data.To
+	}
+	return true, ""
 }
 
 func (wppc *WhatsappController) createDraft(data *models.AIResponse) (string, error) {
@@ -335,4 +395,78 @@ func (wppc *WhatsappController) getFilenameFromMimeType(mimeType string) string 
 func (wppc *WhatsappController) buildPreviewMessage(data *models.AIResponse) string {
 	return fmt.Sprintf("*Borrador IA Creado* ✉️\n\n*Para:* %s\n*Asunto:* %s\n\n%s",
 		data.To, data.Subject, data.Content)
+}
+
+// --- Flujo de alta de nuevo contacto ---
+
+func (wppc *WhatsappController) startAddContactName(sender string) {
+	state, ok := wppc.newContacts[sender]
+	if !ok {
+		state = &NewContactState{}
+		wppc.newContacts[sender] = state
+	}
+	state.Stage = "awaiting_name"
+	wppc.reply(sender, "Perfecto, dime cómo quieres llamar a este contacto (ej: Mamá, Juan, Contador).")
+}
+
+func (wppc *WhatsappController) cancelAddContactFlow(sender string) {
+	delete(wppc.newContacts, sender)
+	delete(wppc.pendingNewRecipient, sender)
+	wppc.reply(sender, "OK, no lo guardo como contacto. Dime el email al que quieres enviar y lo uso solo esta vez.")
+}
+
+func (wppc *WhatsappController) handleNewContactName(sender, msg string) {
+	name := strings.TrimSpace(msg)
+	if name == "" {
+		wppc.reply(sender, "Necesito un nombre para el contacto. Intenta de nuevo.")
+		return
+	}
+	state := wppc.newContacts[sender]
+	state.TempName = name
+	state.Stage = "awaiting_email"
+	wppc.reply(sender, fmt.Sprintf("Genial, '%s'. Ahora dime el email de este contacto.", name))
+}
+
+func (wppc *WhatsappController) handleNewContactEmail(sender, msg string, state *NewContactState) {
+	email := strings.TrimSpace(msg)
+	if !utilsController.IsValidEmail(email) {
+		wppc.reply(sender, "Ese no parece un email válido. Intenta de nuevo (ejemplo: persona@dominio.com).")
+		return
+	}
+
+	// Verificar duplicado por email (el nombre sí puede repetirse)
+	for _, existingEmail := range wppc.contacts {
+		if strings.EqualFold(existingEmail, email) {
+			wppc.reply(sender, "Ya tengo un contacto con ese email. No lo vuelvo a guardar.")
+			delete(wppc.newContacts, sender)
+			delete(wppc.pendingNewRecipient, sender)
+			return
+		}
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), store.DefaultTimeout)
+	defer cancel()
+
+	if err := store.SetContact(ctx, state.TempName, email); err != nil {
+		fmt.Printf("❌ Error guardando contacto en Redis: %v\n", err)
+		wppc.reply(sender, "⚠️ No pude guardar el contacto. Intenta de nuevo más tarde.")
+		delete(wppc.newContacts, sender)
+		delete(wppc.pendingNewRecipient, sender)
+		return
+	}
+
+	// Actualizar mapa en memoria
+	wppc.contacts[state.TempName] = email
+	wppc.reply(sender, fmt.Sprintf("Contacto guardado: %s -> %s ✅", state.TempName, email))
+
+	// Si había un borrador IA pendiente sin destinatario resuelto, completarlo ahora
+	if pending, ok := wppc.pendingNewRecipient[sender]; ok {
+		pending.To = email
+		delete(wppc.pendingNewRecipient, sender)
+		delete(wppc.newContacts, sender)
+		wppc.finalizeDraftWithRecipient(sender, pending)
+		return
+	}
+
+	delete(wppc.newContacts, sender)
 }

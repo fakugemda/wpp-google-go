@@ -1,37 +1,25 @@
 package config
 
 import (
-	"encoding/json"
+	"context"
 	"fmt"
-	"os"
+	"whatsapp-gmail-bot/store"
 )
 
 var Contacts = make(map[string]string)
 
 func LoadContacts() {
-	envData := os.Getenv("CONTACTS_JSON")
-	var data []byte
-	var err error
+	ctx, cancel := context.WithTimeout(context.Background(), store.DefaultTimeout)
+	defer cancel()
 
-	if envData != "" {
-		fmt.Println("Cargando contactos desde Variable de Entorno")
-		data = []byte(envData)
-	} else {
-		fmt.Println("Cargando contactos desde contacts.json")
-		data, err = os.ReadFile("resources/contacts.json")
-		if err != nil {
-			fmt.Println("No se encontró lista de contactos. El bot funcionará sin agenda.")
-			return
-		}
-	}
-
-	err = json.Unmarshal(data, &Contacts)
+	loaded, err := store.GetContacts(ctx)
 	if err != nil {
-		fmt.Printf("Error procesando JSON de contactos: %s\n", err.Error())
+		fmt.Printf("No se pudieron cargar contactos desde Redis: %v. El bot funcionará sin agenda.\n", err)
 		return
 	}
 
-	fmt.Printf("Agenda cargada: %d contactos disponibles.\n", len(Contacts))
+	Contacts = loaded
+	fmt.Printf("Agenda cargada desde Redis: %d contactos disponibles.\n", len(Contacts))
 }
 
 // GetContactsPrompt - Convierte el mapa a texto para que la IA lo lea
