@@ -59,7 +59,8 @@ func InitGmail() {
 // Blindado contra problemas UTF-8 (tildes, eñes, emojis)
 func CreateDraft(to, subject, body string, attachmentData []byte, filename string) (string, error) {
 	to = strings.TrimSpace(to)
-	if !utilsGmail.IsValidEmail(to) {
+	// Permitir múltiples destinatarios separados por comas en el header "To"
+	if !utilsGmail.IsValidEmailList(to) {
 		return "", fmt.Errorf("email inválido: %s", to)
 	}
 

@@ -96,6 +96,67 @@ func (u *Utils) IsValidEmail(email string) bool {
 	return true
 }
 
+// IsValidEmailList valida una lista de correos separados por comas
+// Se usa para headers tipo "To" donde Gmail permite múltiples destinatarios.
+func (u *Utils) IsValidEmailList(header string) bool {
+	header = strings.TrimSpace(header)
+	if header == "" {
+		return false
+	}
+
+	parts := strings.Split(header, ",")
+	if len(parts) == 0 {
+		return false
+	}
+
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if !u.IsValidEmail(p) {
+			return false
+		}
+	}
+
+	return true
+}
+
+// SplitRecipients separa una cadena de destinatarios potencialmente múltiples
+// usando comas y conectores comunes como "y", "e" o "and".
+// Devuelve una lista de nombres/emails ya recortados y sin elementos vacíos.
+func (u *Utils) SplitRecipients(raw string) []string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+
+	normalized := strings.ReplaceAll(raw, ";", ",")
+
+	// Reemplazar conectores por comas para unificar el split
+	connectorReplacements := []string{
+		" y ",
+		" e ",
+		" and ",
+	}
+	for _, c := range connectorReplacements {
+		normalized = strings.ReplaceAll(normalized, c, ",")
+	}
+
+	parts := strings.Split(normalized, ",")
+	var out []string
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			continue
+		}
+		out = append(out, p)
+	}
+
+	// Si no se pudo separar en varios, devolver el original
+	if len(out) == 0 {
+		return []string{raw}
+	}
+	return out
+}
+
 // NormalizeArgPhoneNumber normaliza números de teléfono al formato internacional
 // Maneja específicamente el caso argentino: 549345xxxxxxx -> 54345xxxxxxx
 func (u *Utils) NormalizeArgPhoneNumber(phone string) string {

@@ -351,16 +351,45 @@ func (wppc *WhatsappController) validateAndResolveRecipient(data *models.AIRespo
 		return false, ""
 	}
 	data.To = strings.TrimSpace(data.To)
-	if !utilsController.IsValidEmail(data.To) {
-		if email, found := utilsController.ResolveContactByName(wppc.contacts, data.To); found {
-			data.To = email
-			return true, ""
-		}
+	resolved, unresolved, ok := wppc.resolveRecipientsList(data.To)
+	if !ok {
+		return false, unresolved
 	}
-	if !utilsController.IsValidEmail(data.To) {
-		return false, data.To
-	}
+
+	data.To = strings.Join(resolved, ", ")
 	return true, ""
+}
+
+// resolveRecipientsList se encarga de procesar una cadena de destinatarios
+// potencialmente múltiples (separados por comas / "y" / "e")
+func (wppc *WhatsappController) resolveRecipientsList(raw string) ([]string, string, bool) {
+	parts := utilsController.SplitRecipients(raw)
+	if len(parts) == 0 {
+		return nil, "", false
+	}
+
+	var resolved []string
+
+	for _, p := range parts {
+		if utilsController.IsValidEmail(p) {
+			resolved = append(resolved, p)
+			continue
+		}
+
+		// Intentar resolver contra la agenda por nombre/apodo
+		if email, found := utilsController.ResolveContactByName(wppc.contacts, p); found {
+			resolved = append(resolved, email)
+			continue
+		}
+
+		return nil, p, false
+	}
+
+	if len(resolved) == 0 {
+		return nil, "", false
+	}
+
+	return resolved, "", true
 }
 
 func (wppc *WhatsappController) createDraft(data *models.AIResponse) (string, error) {
@@ -461,7 +490,16 @@ func (wppc *WhatsappController) handleNewContactEmail(sender, msg string, state 
 
 	// Si había un borrador IA pendiente sin destinatario resuelto, completarlo ahora
 	if pending, ok := wppc.pendingNewRecipient[sender]; ok {
-		pending.To = email
+		ok, unresolved := wppc.validateAndResolveRecipient(pending)
+		if !ok {
+			if strings.TrimSpace(unresolved) != "" {
+				wppc.reply(sender, fmt.Sprintf("Aún no tengo todos los destinatarios resueltos (me falta \"%s\").", unresolved))
+				return
+			}
+			wppc.reply(sender, "Todavía me falta saber a quién enviar el mail. Intenta indicarlo de nuevo.")
+			return
+		}
+
 		delete(wppc.pendingNewRecipient, sender)
 		delete(wppc.newContacts, sender)
 		wppc.finalizeDraftWithRecipient(sender, pending)

@@ -28,6 +28,7 @@ MENSAJE DEL USUARIO: "%s"
      b) Si el usuario escribe un email explícito en el mensaje, úsalo.
      c) Si el usuario dice un NOMBRE o apodo que NO está en la lista: pon en "to" ESE NOMBRE tal cual (ej: "juli", "julian", "la tía"). Así podemos ofrecerle agregarlo. NO uses "PENDIENTE" en este caso.
      d) Solo usa "PENDIENTE" si no menciona a nadie o es totalmente ambiguo.
+     e) Si el usuario menciona VARIOS destinatarios en la misma frase (separados por comas, "y", "e", "and", etc.), puedes poner múltiples destinatarios en el campo "to", separados por comas. Cada elemento de esa lista sigue las reglas a), b), c) y d) de forma independiente.
    - Asunto ("subject"): Creativo pero claro, acorde al tono del mensaje.
    - Cuerpo ("content"): Redacta el borrador siguiendo las reglas de personalidad del punto 1.
    - Output JSON: {"type": "EMAIL_DRAFT", "to": "...", "subject": "...", "content": "..."}
