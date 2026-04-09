@@ -74,3 +74,32 @@ func SetContact(ctx context.Context, name, email string) error {
 	_, err := exec(ctx, []interface{}{"HSET", contactsKey, name, email})
 	return err
 }
+
+func Ping(ctx context.Context) error {
+	_, err := exec(ctx, []interface{}{"PING"})
+	return err
+}
+
+func StartKeepAlive(interval time.Duration) {
+	if interval <= 0 {
+		interval = 2 * time.Hour
+	}
+
+	go func() {
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+
+		for range ticker.C {
+			ctx, cancel := context.WithTimeout(context.Background(), DefaultTimeout)
+			err := Ping(ctx)
+			cancel()
+
+			if err != nil {
+				fmt.Printf("⚠️ KeepAlive Redis falló: %v\n", err)
+				continue
+			}
+
+			fmt.Println("✅ KeepAlive Redis: PING enviado")
+		}
+	}()
+}

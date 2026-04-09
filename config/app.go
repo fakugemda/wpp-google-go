@@ -3,9 +3,11 @@ package config
 import (
 	"log"
 	"os"
+	"time"
 	"whatsapp-gmail-bot/discord"
 	"whatsapp-gmail-bot/routes"
 	"whatsapp-gmail-bot/service"
+	"whatsapp-gmail-bot/store"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/joho/godotenv"
@@ -27,6 +29,7 @@ func InitApp() {
 
 	service.InitGmail()
 	LoadContacts()
+	store.StartKeepAlive(2 * time.Hour)
 	go discord.StartService(GetContactsPrompt())
 	app := fiber.New()
 	routes.RegisterWhatsappRoutes(app, Contacts, GetContactsPrompt())
